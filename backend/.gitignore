@@ -1,0 +1,21 @@
+# Environment variables — never commit these
+.env
+.env.local
+.env.production
+
+# Build output
+dist/
+
+# Dependencies
+node_modules/
+
+# Uploaded files (local dev only — production uses Cloudinary)
+uploads/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db

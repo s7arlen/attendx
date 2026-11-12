@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Build outputs
+dist/
+**/dist/
+build/
+**/build/
+
+# Cache & temporary files
+.vite/
+.vite-cache/
+**/.vite-cache/
+**/.vite/
+
+# Uploads
+uploads/
+**/uploads/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# System & IDE files
+.DS_Store
+Thumbs.db
+.vscode/
