@@ -516,7 +516,7 @@ export const scanVisitorQR = async (req: AuthRequest, res: Response): Promise<vo
 
     res.json({
       success: true,
-      message: action === 'entry' ? 'Entry recorded ✓' : 'Exit recorded ✓',
+      message: action === 'entry' ? 'Entry recorded' : 'Exit recorded',
       scanResult: 'success',
       data: { visitor, visit, action, timestamp: now },
     });

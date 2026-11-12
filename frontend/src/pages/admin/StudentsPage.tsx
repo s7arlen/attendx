@@ -356,7 +356,7 @@ export default function StudentsPage() {
                         }`}>
                           {field.value
                             ? isValid
-                              ? `✓ Valid USN: ${field.value}`
+                              ? `Valid USN: ${field.value}`
                               : 'Format: 4CB + year(2) + branch(CS/AI/IS/CG/EC/ME/CV/EE) + roll(3) — e.g. 4CB25CS001'
                             : 'Format: 4CB25CS001 — year · branch · roll number'
                           }

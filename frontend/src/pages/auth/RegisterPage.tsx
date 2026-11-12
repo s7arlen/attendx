@@ -4,7 +4,7 @@ import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { motion } from 'framer-motion'
-import { QrCode, Eye, EyeOff, ArrowRight, ArrowLeft } from 'lucide-react'
+import { QrCode, Eye, EyeOff, ArrowRight, ArrowLeft, GraduationCap, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -104,7 +104,7 @@ export default function RegisterPage() {
                     : 'border-border hover:border-primary/50 text-muted-foreground'
                 }`}
               >
-                {r === 'student' ? '🎓 ' : '👨‍🏫 '}{r}
+                {r === 'student' ? <GraduationCap className="w-3.5 h-3.5 inline mr-1" /> : <Users className="w-3.5 h-3.5 inline mr-1" />}{r}
               </button>
             ))}
           </div>
@@ -186,7 +186,7 @@ export default function RegisterPage() {
                               className={`font-mono uppercase tracking-widest ${field.value && !isValid ? 'border-destructive' : ''}`}
                             />
                             <p className={`text-xs ${field.value ? (isValid ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive') : 'text-muted-foreground'}`}>
-                              {field.value ? (isValid ? `✓ Valid: ${field.value}` : 'e.g. 4CB25CS001 · year · branch · roll') : 'Format: 4CB25CS001'}
+                              {field.value ? (isValid ? `Valid: ${field.value}` : 'e.g. 4CB25CS001 · year · branch · roll') : 'Format: 4CB25CS001'}
                             </p>
                           </div>
                         )

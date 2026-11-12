@@ -154,7 +154,7 @@ export const endSession = async (req: AuthRequest, res: Response): Promise<void>
 
     await createAuditLog(req.user!.userId, 'END_SESSION', 'AttendanceSession', sessionId, {}, getClientIp(req));
 
-    // 🔔 Notify teacher the session ended
+    // Notify teacher the session ended
     const { Notification } = await import('../models/Notification.model');
     const subjectDoc = await Subject.findById(session.subjectId);
     await Notification.create({
@@ -305,7 +305,7 @@ export const verifyAttendance = async (req: AuthRequest, res: Response): Promise
 
     await createAuditLog(req.user!.userId, 'MARK_ATTENDANCE', 'AttendanceRecord', record._id.toString(), { sessionId }, getClientIp(req));
 
-    // 🔔 Notify student their attendance was marked
+    // Notify student their attendance was marked
     const { Notification } = await import('../models/Notification.model');
     await Notification.create({
       userId: req.user!.userId,

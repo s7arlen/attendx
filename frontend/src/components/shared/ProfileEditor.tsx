@@ -130,7 +130,7 @@ export function ProfileEditCard() {
                             className={`font-mono uppercase tracking-widest ${field.value && !isValid ? 'border-destructive' : ''}`}
                           />
                           <p className={`text-xs ${field.value ? (isValid ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive') : 'text-muted-foreground'}`}>
-                            {field.value ? (isValid ? `✓ Valid: ${field.value}` : 'e.g. 4CB25CS001 · year · branch · roll') : 'Format: 4CB25CS001'}
+                            {field.value ? (isValid ? `Valid: ${field.value}` : 'e.g. 4CB25CS001 · year · branch · roll') : 'Format: 4CB25CS001'}
                           </p>
                         </div>
                       )

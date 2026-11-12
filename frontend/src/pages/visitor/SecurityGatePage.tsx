@@ -88,7 +88,7 @@ export default function SecurityGatePage() {
     onSuccess: (data) => {
       setScanResult('success')
       setScanData({ visitor: data.data?.visitor, visit: data.data?.visit, action: data.data?.action, timestamp: data.data?.timestamp })
-      toast({ title: action === 'entry' ? '✅ Entry Recorded' : '✅ Exit Recorded', variant: 'success' })
+      toast({ title: action === 'entry' ? 'Entry Recorded' : 'Exit Recorded', variant: 'success' })
     },
     onError: (err: any) => {
       const r = err.response?.data?.scanResult || 'invalid'
@@ -170,7 +170,7 @@ export default function SecurityGatePage() {
               <div className="space-y-4">
                 <div className="flex flex-col items-center gap-2">
                   {resultIcon[scanResult]}
-                  <p className="font-semibold capitalize">{scanResult === 'success' ? `${scanData.action} recorded ✓` : scanData.message}</p>
+                  <p className="font-semibold capitalize">{scanResult === 'success' ? `${scanData.action} recorded` : scanData.message}</p>
                 </div>
                 {scanData.visitor && (
                   <div className="rounded-xl bg-background border p-4 space-y-2">

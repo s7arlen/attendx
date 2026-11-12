@@ -63,14 +63,14 @@ const seedUsers = [
 
 async function seed() {
   try {
-    console.log('🌱 Connecting to MongoDB...');
+    console.log('[seed] Connecting to MongoDB...');
     await mongoose.connect(MONGO_URI);
-    console.log('✅ Connected');
+    console.log('[seed] Connected');
 
     for (const userData of seedUsers) {
       const existing = await User.findOne({ email: userData.email });
       if (existing) {
-        console.log(`⏭️  Skipping ${userData.email} (already exists)`);
+        console.log(`[seed] Skipping ${userData.email} (already exists)`);
         continue;
       }
 
@@ -90,17 +90,17 @@ async function seed() {
         isActive: true,
       });
 
-      console.log(`✅ Created ${userData.role}: ${userData.email}`);
+      console.log(`[seed] Created ${userData.role}: ${userData.email}`);
     }
 
-    console.log('\n🎉 Seed complete!\n');
+    console.log('\n[seed] Done!\n');
     console.log('Demo credentials:');
     console.log('  Admin:    admin@attendx.com     / Admin@123');
     console.log('  Teacher:  teacher1@attendx.com  / Teacher@123');
     console.log('  Security: security@attendx.com  / Security@123');
     console.log('  Student:  student1@attendx.com  / Student@123');
   } catch (err) {
-    console.error('❌ Seed failed:', err);
+    console.error('[seed] Failed:', err);
     process.exit(1);
   } finally {
     await mongoose.disconnect();

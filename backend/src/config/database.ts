@@ -9,7 +9,7 @@ export const connectDB = async (): Promise<void> => {
       socketTimeoutMS: 45000,
     });
 
-    console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
+    console.log(`[db] MongoDB connected: ${conn.connection.host}`);
 
     mongoose.connection.on('error', (err) => {
       console.error('MongoDB connection error:', err);
@@ -20,7 +20,7 @@ export const connectDB = async (): Promise<void> => {
     });
 
   } catch (error) {
-    console.error('❌ MongoDB connection failed:', error);
+    console.error('[db] MongoDB connection failed:', error);
     process.exit(1);
   }
 };

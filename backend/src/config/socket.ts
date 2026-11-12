@@ -24,7 +24,7 @@ export const setupSocketIO = (io: Server): void => {
   });
 
   io.on('connection', (socket: AuthenticatedSocket) => {
-    console.log(`🔌 Socket connected: ${socket.id} (User: ${socket.userId})`);
+    console.log(`[socket] Connected: ${socket.id} (User: ${socket.userId})`);
 
     // Join role-based rooms
     if (socket.userRole) {
@@ -37,7 +37,7 @@ export const setupSocketIO = (io: Server): void => {
     // Teacher joins session room
     socket.on('join:session', (sessionId: string) => {
       socket.join(`session:${sessionId}`);
-      console.log(`📋 User ${socket.userId} joined session ${sessionId}`);
+      console.log(`[socket] User ${socket.userId} joined session ${sessionId}`);
     });
 
     // Student joins session for live updates
@@ -48,11 +48,11 @@ export const setupSocketIO = (io: Server): void => {
     // Security/admin joins the visitor gate room for live updates
     socket.on('join:visitor-gate', () => {
       socket.join('visitor:gate');
-      console.log(`🔒 User ${socket.userId} (${socket.userRole}) joined visitor gate room`);
+      console.log(`[socket] User ${socket.userId} (${socket.userRole}) joined visitor gate room`);
     });
 
     socket.on('disconnect', () => {
-      console.log(`🔌 Socket disconnected: ${socket.id}`);
+      console.log(`[socket] Disconnected: ${socket.id}`);
     });
   });
 };

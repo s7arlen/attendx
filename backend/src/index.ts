@@ -84,9 +84,9 @@ const PORT = process.env.PORT || 5000;
 const startServer = async () => {
   await connectDB();
   httpServer.listen(PORT, () => {
-    console.log(`🚀 AttendX Server running on port ${PORT}`);
-    console.log(`📡 Socket.IO enabled`);
-    console.log(`🌍 Environment: ${process.env.NODE_ENV}`);
+    console.log(`[server] AttendX running on port ${PORT}`);
+    console.log(`[server] Socket.IO enabled`);
+    console.log(`[server] Environment: ${process.env.NODE_ENV}`);
   });
 };
 

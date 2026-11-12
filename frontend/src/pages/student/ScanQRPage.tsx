@@ -87,7 +87,7 @@ function SessionBanner({ session }: { session: ValidatedSession }) {
         <CheckCircle2 className="w-5 h-5 text-emerald-500" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Session verified ✓</p>
+        <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Session verified</p>
         <p className="font-semibold text-sm truncate">{session.subject?.subjectName || 'Session found'}</p>
         <p className="text-xs text-muted-foreground font-mono">{session.subject?.subjectCode}</p>
       </div>
