@@ -43,6 +43,19 @@ import StudentAttendancePage from '@/pages/student/StudentAttendancePage'
 import StudentAnalyticsPage from '@/pages/student/StudentAnalyticsPage'
 import StudentProfilePage from '@/pages/student/StudentProfilePage'
 
+// Visitor Pages
+import VisitorDashboard from '@/pages/visitor/VisitorDashboard'
+import AllVisitorsPage from '@/pages/visitor/AllVisitorsPage'
+import RegisterVisitorPage from '@/pages/visitor/RegisterVisitorPage'
+import VisitorApprovalsPage from '@/pages/visitor/VisitorApprovalsPage'
+import VisitorPassesPage from '@/pages/visitor/VisitorPassesPage'
+import SecurityGatePage from '@/pages/visitor/SecurityGatePage'
+import CurrentlyInsidePage from '@/pages/visitor/CurrentlyInsidePage'
+import VisitorHistoryPage from '@/pages/visitor/VisitorHistoryPage'
+import VisitorAnalyticsPage from '@/pages/visitor/VisitorAnalyticsPage'
+import EventManagementPage from '@/pages/visitor/EventManagementPage'
+import VisitDetailPage from '@/pages/visitor/VisitDetailPage'
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -58,7 +71,7 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode;
   const location = useLocation()
   if (!isAuthenticated) return <Navigate to="/login" state={{ from: location }} replace />
   if (allowedRoles && user && !allowedRoles.includes(user.role)) {
-    const home = user.role === 'admin' ? '/len-admin' : `/${user.role}`
+    const home = user.role === 'admin' ? '/len-admin' : user.role === 'security' ? '/visitor/gate' : `/${user.role}`
     return <Navigate to={home} replace />
   }
   return <>{children}</>
@@ -68,6 +81,7 @@ function RootRedirect() {
   const { isAuthenticated, user } = useAuthStore()
   if (!isAuthenticated) return <Navigate to="/login" replace />
   if (user?.role === 'admin') return <Navigate to="/len-admin" replace />
+  if (user?.role === 'security') return <Navigate to="/visitor/gate" replace />
   return <Navigate to={`/${user?.role}`} replace />
 }
 
@@ -126,6 +140,22 @@ export default function App() {
             <Route path="attendance" element={<StudentAttendancePage />} />
             <Route path="analytics" element={<StudentAnalyticsPage />} />
             <Route path="profile" element={<StudentProfilePage />} />
+          </Route>
+
+          {/* Visitor Management — accessible by admin, security, teacher */}
+          <Route path="/visitor" element={<ProtectedRoute allowedRoles={['admin','security','teacher']}><DashboardLayout /></ProtectedRoute>}>
+            <Route index element={<VisitorDashboard />} />
+            <Route path="visits" element={<AllVisitorsPage />} />
+            <Route path="visits/:visitId" element={<VisitDetailPage />} />
+            <Route path="register" element={<RegisterVisitorPage />} />
+            <Route path="approvals" element={<VisitorApprovalsPage />} />
+            <Route path="my-requests" element={<VisitorApprovalsPage />} />
+            <Route path="passes" element={<VisitorPassesPage />} />
+            <Route path="gate" element={<SecurityGatePage />} />
+            <Route path="inside" element={<CurrentlyInsidePage />} />
+            <Route path="history" element={<VisitorHistoryPage />} />
+            <Route path="analytics" element={<VisitorAnalyticsPage />} />
+            <Route path="events" element={<EventManagementPage />} />
           </Route>
 
           {/* Block old /admin path */}

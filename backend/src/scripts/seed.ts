@@ -24,6 +24,14 @@ const seedUsers = [
     phone: '+1 234 567 8901',
   },
   {
+    name: 'Security Guard',
+    email: 'security@attendx.com',
+    password: 'Security@123',
+    role: 'security' as const,
+    department: 'Campus Security',
+    phone: '+1 234 567 8903',
+  },
+  {
     name: 'Teacher Two',
     email: 'teacher2@attendx.com',
     password: 'Teacher@123',
@@ -87,9 +95,10 @@ async function seed() {
 
     console.log('\n🎉 Seed complete!\n');
     console.log('Demo credentials:');
-    console.log('  Admin:   admin@attendx.com    / Admin@123');
-    console.log('  Teacher: teacher1@attendx.com / Teacher@123');
-    console.log('  Student: student1@attendx.com / Student@123');
+    console.log('  Admin:    admin@attendx.com     / Admin@123');
+    console.log('  Teacher:  teacher1@attendx.com  / Teacher@123');
+    console.log('  Security: security@attendx.com  / Security@123');
+    console.log('  Student:  student1@attendx.com  / Student@123');
   } catch (err) {
     console.error('❌ Seed failed:', err);
     process.exit(1);

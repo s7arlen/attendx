@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'teacher' | 'student';
+export type UserRole = 'admin' | 'teacher' | 'student' | 'security';
 
 export interface User {
   id: string;
@@ -147,4 +147,113 @@ export interface ApiError {
     };
   };
   message?: string;
+}
+
+// ─── Visitor Management Types ────────────────────────────────
+
+export type VisitorCategory = 'guest' | 'vendor' | 'parent' | 'official' | 'delivery' | 'interview' | 'contractor' | 'other';
+export type VisitStatus = 'pending' | 'approved' | 'rejected' | 'checked-in' | 'checked-out' | 'expired' | 'cancelled';
+export type PassStatus = 'active' | 'used-entry' | 'used-exit' | 'expired' | 'revoked';
+export type LogAction = 'entry' | 'exit' | 'denied' | 'duplicate';
+
+export interface Visitor {
+  _id: string;
+  fullName: string;
+  phone: string;
+  email?: string;
+  category: VisitorCategory;
+  photo?: string;
+  nationalId?: string;
+  address?: string;
+  company?: string;
+  notes?: string;
+  isBlacklisted: boolean;
+  blacklistReason?: string;
+  createdAt: string;
+}
+
+export interface VisitorVisit {
+  _id: string;
+  visitorId: Visitor | string;
+  hostId: User | string;
+  registeredBy: User | string;
+  visitType: 'pre-registered' | 'walk-in';
+  purpose: string;
+  department: string;
+  visitDate: string;
+  expectedArrival: string;
+  expectedDeparture: string;
+  accompanyingCount: number;
+  status: VisitStatus;
+  approvedBy?: User | string;
+  approvedAt?: string;
+  rejectedBy?: User | string;
+  rejectedAt?: string;
+  rejectionReason?: string;
+  eventId?: string;
+  checkedInAt?: string;
+  checkedOutAt?: string;
+  createdAt: string;
+}
+
+export interface VisitorPass {
+  _id: string;
+  visitId: VisitorVisit | string;
+  visitorId: Visitor | string;
+  passCode: string;
+  qrCodeData: string;
+  status: PassStatus;
+  validFrom: string;
+  validUntil: string;
+  revokedBy?: User | string;
+  revokedAt?: string;
+  revocationReason?: string;
+  createdAt: string;
+}
+
+export interface VisitorLog {
+  _id: string;
+  visitId: VisitorVisit | string;
+  visitorId: Visitor | string;
+  passId?: VisitorPass | string;
+  action: LogAction;
+  timestamp: string;
+  gateOperatorId: User | string;
+  scanMethod: 'qr' | 'manual';
+  notes?: string;
+  denied_reason?: string;
+  createdAt: string;
+}
+
+export interface VisitorEvent {
+  _id: string;
+  name: string;
+  description?: string;
+  eventDate: string;
+  startTime: string;
+  endTime: string;
+  venue: string;
+  organizer: User | string;
+  maxVisitors?: number;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface VisitorDashboardStats {
+  totalToday: number;
+  pendingApprovals: number;
+  currentlyInside: number;
+  expectedToday: number;
+  rejectedToday: number;
+  totalVisitors: number;
+  avgDuration: number;
+  recentVisits: VisitorVisit[];
+}
+
+export interface VisitorAnalytics {
+  dailyTrend: { date: string; count: number }[];
+  categoryBreakdown: { category: string; count: number }[];
+  departmentStats: { department: string; count: number }[];
+  statusBreakdown: { status: string; count: number }[];
+  totalThisMonth: number;
 }

@@ -45,6 +45,12 @@ export const setupSocketIO = (io: Server): void => {
       socket.join(`session:${sessionId}:watchers`);
     });
 
+    // Security/admin joins the visitor gate room for live updates
+    socket.on('join:visitor-gate', () => {
+      socket.join('visitor:gate');
+      console.log(`🔒 User ${socket.userId} (${socket.userRole}) joined visitor gate room`);
+    });
+
     socket.on('disconnect', () => {
       console.log(`🔌 Socket disconnected: ${socket.id}`);
     });

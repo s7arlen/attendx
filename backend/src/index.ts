@@ -16,6 +16,7 @@ import analyticsRoutes from './routes/analytics.routes';
 import webauthnRoutes from './routes/webauthn.routes';
 import notificationsRoutes from './routes/notifications.routes';
 import uploadRoutes from './routes/upload.routes';
+import visitorRoutes from './routes/visitor.routes';
 import { errorHandler } from './middleware/errorHandler';
 
 dotenv.config();
@@ -68,6 +69,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/auth/webauthn', webauthnRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/visitor', visitorRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

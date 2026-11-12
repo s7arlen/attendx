@@ -1,7 +1,7 @@
 import mongoose, { Document, Schema } from 'mongoose';
 import bcrypt from 'bcryptjs';
 
-export type UserRole = 'admin' | 'teacher' | 'student';
+export type UserRole = 'admin' | 'teacher' | 'student' | 'security';
 
 export interface IWebAuthnCredential {
   credentialId: string;       // base64url encoded
@@ -38,7 +38,7 @@ const UserSchema = new Schema<IUser>(
     name: { type: String, required: true, trim: true },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     passwordHash: { type: String, required: true },
-    role: { type: String, enum: ['admin', 'teacher', 'student'], required: true },
+    role: { type: String, enum: ['admin', 'teacher', 'student', 'security'], required: true },
     department: { type: String, required: true, trim: true },
     year: { type: Number, min: 1, max: 4 },
     section: { type: String, trim: true },

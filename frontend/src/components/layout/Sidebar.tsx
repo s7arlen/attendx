@@ -4,7 +4,8 @@ import {
   LayoutDashboard, Users, BookOpen, Calendar, BarChart3, QrCode,
   History, ScanLine, ChevronLeft, ChevronRight, GraduationCap,
   ShieldCheck, LogOut, UserCheck, Clock, UserCircle,
-  Shield, AlertTriangle,
+  Shield, AlertTriangle, Building2, CalendarDays,
+  UserPlus, ClipboardCheck, QrCode as QrCodeIcon, LogIn, BarChart2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/authStore'
@@ -13,6 +14,7 @@ interface NavItem {
   label: string
   icon: React.ElementType
   path: string
+  group?: string
 }
 
 const adminNavItems: NavItem[] = [
@@ -25,6 +27,18 @@ const adminNavItems: NavItem[] = [
   { label: 'Reports',    icon: History,          path: '/len-admin/reports' },
   { label: 'Disputes',   icon: AlertTriangle,    path: '/len-admin/disputes' },
   { label: 'Audit Logs', icon: Shield,           path: '/len-admin/audit-logs' },
+  // Visitor Management
+  { label: '— Visitors —',       icon: Building2,      path: '/visitor',           group: 'visitor' },
+  { label: 'Visitor Dashboard',   icon: LayoutDashboard, path: '/visitor',          group: 'visitor' },
+  { label: 'All Visits',          icon: Users,           path: '/visitor/visits',   group: 'visitor' },
+  { label: 'Register Visitor',    icon: UserPlus,        path: '/visitor/register', group: 'visitor' },
+  { label: 'Approvals',           icon: ClipboardCheck,  path: '/visitor/approvals',group: 'visitor' },
+  { label: 'QR Passes',           icon: QrCodeIcon,      path: '/visitor/passes',   group: 'visitor' },
+  { label: 'Gate Scanner',        icon: ScanLine,        path: '/visitor/gate',     group: 'visitor' },
+  { label: 'Currently Inside',    icon: UserCheck,       path: '/visitor/inside',   group: 'visitor' },
+  { label: 'Entry/Exit History',  icon: History,         path: '/visitor/history',  group: 'visitor' },
+  { label: 'Visitor Analytics',   icon: BarChart2,       path: '/visitor/analytics',group: 'visitor' },
+  { label: 'Events',              icon: CalendarDays,    path: '/visitor/events',   group: 'visitor' },
   { label: 'Profile',    icon: UserCircle,       path: '/len-admin/profile' },
 ]
 
@@ -34,7 +48,21 @@ const teacherNavItems: NavItem[] = [
   { label: 'Timetable',   icon: Clock,           path: '/teacher/timetable' },
   { label: 'Sessions',    icon: QrCode,          path: '/teacher/sessions' },
   { label: 'Analytics',   icon: BarChart3,       path: '/teacher/analytics' },
-  { label: 'Profile',     icon: UserCircle,      path: '/teacher/profile' },
+  // Visitor
+  { label: '— Visitors —',  icon: Building2,       path: '/visitor',             group: 'visitor' },
+  { label: 'My Requests',   icon: ClipboardCheck,  path: '/visitor/my-requests', group: 'visitor' },
+  { label: 'Events',        icon: CalendarDays,    path: '/visitor/events',      group: 'visitor' },
+  { label: 'Profile',   icon: UserCircle,      path: '/teacher/profile' },
+]
+
+const securityNavItems: NavItem[] = [
+  { label: 'Gate Scanner',       icon: ScanLine,       path: '/visitor/gate' },
+  { label: 'Register Visitor',   icon: UserPlus,       path: '/visitor/register' },
+  { label: 'All Visits',         icon: Users,          path: '/visitor/visits' },
+  { label: 'Currently Inside',   icon: UserCheck,      path: '/visitor/inside' },
+  { label: 'QR Passes',          icon: QrCodeIcon,     path: '/visitor/passes' },
+  { label: 'Entry/Exit History', icon: History,        path: '/visitor/history' },
+  { label: 'Events',             icon: CalendarDays,   path: '/visitor/events' },
 ]
 
 const studentNavItems: NavItem[] = [
@@ -50,15 +78,17 @@ const studentNavItems: NavItem[] = [
 const dashboardPaths = new Set(['/len-admin', '/teacher', '/student'])
 
 const roleGradients: Record<string, string> = {
-  admin:   'from-red-500 to-orange-500',
-  teacher: 'from-blue-500 to-indigo-600',
-  student: 'from-emerald-500 to-teal-600',
+  admin:    'from-red-500 to-orange-500',
+  teacher:  'from-blue-500 to-indigo-600',
+  student:  'from-emerald-500 to-teal-600',
+  security: 'from-slate-500 to-slate-700',
 }
 
 const roleIcons: Record<string, React.ElementType> = {
-  admin:   ShieldCheck,
-  teacher: Users,
-  student: GraduationCap,
+  admin:    ShieldCheck,
+  teacher:  Users,
+  student:  GraduationCap,
+  security: Shield,
 }
 
 interface SidebarProps {
@@ -71,8 +101,9 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const { user, logout } = useAuthStore()
 
   const navItems =
-    user?.role === 'admin'   ? adminNavItems   :
-    user?.role === 'teacher' ? teacherNavItems :
+    user?.role === 'admin'    ? adminNavItems    :
+    user?.role === 'teacher'  ? teacherNavItems  :
+    user?.role === 'security' ? securityNavItems :
     studentNavItems
 
   const RoleIcon = roleIcons[user?.role || 'student']
@@ -148,6 +179,14 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
         {/* ── Nav ── */}
         <nav className="flex-1 py-3 space-y-0.5 px-2 overflow-y-auto overflow-x-hidden">
           {navItems.map((item) => {
+            // Separator item
+            if (item.label.startsWith('—')) {
+              return !collapsed ? (
+                <div key={item.path + '-sep'} className="pt-3 pb-1 px-3">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Visitor Management</p>
+                </div>
+              ) : <div key={item.path + '-sep'} className="pt-2 border-t border-border mx-2" />
+            }
             const Icon = item.icon
             const isActive =
               location.pathname === item.path ||

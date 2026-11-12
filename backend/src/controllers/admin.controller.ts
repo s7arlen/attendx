@@ -12,7 +12,7 @@ const createUserSchema = z.object({
   name: z.string().min(2).max(100),
   email: z.string().email(),
   password: z.string().min(8),
-  role: z.enum(['teacher', 'student']),
+  role: z.enum(['teacher', 'student', 'security']),
   department: z.string().min(2),
   year: z.number().int().min(1).max(4).optional(),
   section: z.string().optional(),
