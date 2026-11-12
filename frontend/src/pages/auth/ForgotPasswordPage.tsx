@@ -15,9 +15,8 @@ const schema = z.object({ email: z.string().email('Enter a valid email') })
 type Form = z.infer<typeof schema>
 
 export default function ForgotPasswordPage() {
-  const [loading, setLoading]   = useState(false)
-  const [sent, setSent]         = useState(false)
-  const [devCode, setDevCode]   = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [sent, setSent] = useState(false)
 
   const { register, handleSubmit, formState: { errors } } = useForm<Form>({
     resolver: zodResolver(schema),
@@ -26,9 +25,8 @@ export default function ForgotPasswordPage() {
   const onSubmit = async ({ email }: Form) => {
     setLoading(true)
     try {
-      const res = await authService.forgotPassword(email)
+      await authService.forgotPassword(email)
       setSent(true)
-      if (res.devResetCode) setDevCode(res.devResetCode)
     } catch {
       toast({ title: 'Something went wrong', description: 'Please try again.', variant: 'destructive' })
     } finally {
@@ -75,15 +73,9 @@ export default function ForgotPasswordPage() {
               <div>
                 <h3 className="text-lg font-semibold">Check your email</h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  If that email is registered, a 6-digit reset code has been sent.
+                  If that email is registered, a 6-digit reset code has been sent. Please check your inbox.
                 </p>
               </div>
-              {devCode && (
-                <div className="w-full p-3 rounded-xl bg-amber-500/10 border border-amber-200 dark:border-amber-900/50 text-left">
-                  <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">Dev mode — reset code:</p>
-                  <p className="text-2xl font-mono font-bold tracking-widest mt-1">{devCode}</p>
-                </div>
-              )}
               <Link to="/reset-password" className="w-full">
                 <Button variant="gradient" className="w-full">Enter Reset Code</Button>
               </Link>

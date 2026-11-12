@@ -79,7 +79,7 @@ export default function Navbar({ onMenuToggle, title }: NavbarProps) {
       <div className="flex items-center gap-1.5">
         {/* Theme */}
         <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Toggle theme" className="rounded-xl w-9 h-9">
-          {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-indigo-500" />}
+          {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-blue-500" />}
         </Button>
 
         {/* Notifications */}

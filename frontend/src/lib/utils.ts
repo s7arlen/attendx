@@ -47,7 +47,7 @@ export function formatPercentage(value: number): string {
 }
 
 export function generateAvatarUrl(name: string): string {
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=4F46E5&color=fff&bold=true`;
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=2563EB&color=fff&bold=true`;
 }
 
 type CsvValue = string | number | boolean | null | undefined

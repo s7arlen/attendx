@@ -232,7 +232,7 @@ export default function ReportsPage() {
                     <XAxis dataKey="subjectCode" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
                     <YAxis tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
                     <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '12px' }} />
-                    <Bar dataKey="count" fill="#4F46E5" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="count" fill="#2563EB" radius={[6, 6, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               )}

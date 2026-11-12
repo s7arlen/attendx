@@ -1,4 +1,5 @@
 import { Response } from 'express';
+import { Request } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { User } from '../models/User.model';
 import { Visitor } from '../models/Visitor.model';
@@ -10,6 +11,7 @@ import { createNotification } from '../utils/notificationHelper';
 import { createAuditLog, getClientIp } from '../utils/auditLogger';
 import { emitToUser } from '../config/socket';
 import { generateVisitorToken, hashToken, generatePassCode, generateVisitorQRCode } from '../utils/visitorQR';
+import { sendVisitorRequestEmail, sendVisitorApprovedEmail, sendVisitorRejectedEmail } from '../utils/mailer';
 import { Server } from 'socket.io';
 
 // ─────────────────────────────────────────────────────────────
@@ -294,6 +296,17 @@ export const approveVisit = async (req: AuthRequest, res: Response): Promise<voi
 
     await createAuditLog(req.user!.userId, 'APPROVE_VISIT', 'VisitorVisit', visitId, { passCode }, getClientIp(req));
 
+    // Send QR pass email to visitor
+    const visitorDoc = await Visitor.findById(visit.visitorId);
+    const hostDoc    = await User.findById(visit.hostId).select('name');
+    if (visitorDoc?.email && hostDoc) {
+      const dateStr = new Date(visit.visitDate).toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+      sendVisitorApprovedEmail(
+        visitorDoc.email, visitorDoc.fullName, hostDoc.name,
+        dateStr, passCode, pass.qrCodeData
+      ).catch(() => {});
+    }
+
     res.json({
       success: true,
       message: 'Visit approved and QR pass generated',
@@ -345,6 +358,12 @@ export const rejectVisit = async (req: AuthRequest, res: Response): Promise<void
     });
 
     await createAuditLog(req.user!.userId, 'REJECT_VISIT', 'VisitorVisit', visitId, { reason }, getClientIp(req));
+
+    // Send rejection email to visitor
+    const visitorDoc = await Visitor.findById(visit.visitorId);
+    if (visitorDoc?.email) {
+      sendVisitorRejectedEmail(visitorDoc.email, visitorDoc.fullName, (visit.hostId as any)?.name || '', reason).catch(() => {});
+    }
 
     res.json({ success: true, message: 'Visit rejected', data: { visit } });
   } catch (error: any) {
@@ -801,6 +820,118 @@ export const toggleBlacklist = async (req: AuthRequest, res: Response): Promise<
     await visitor.save();
     await createAuditLog(req.user!.userId, blacklist ? 'BLACKLIST_VISITOR' : 'UNBLACKLIST_VISITOR', 'Visitor', visitorId, { reason }, getClientIp(req));
     res.json({ success: true, message: `Visitor ${blacklist ? 'blacklisted' : 'removed from blacklist'}`, data: { visitor } });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
+// PUBLIC: Visitor self-request (NO AUTH REQUIRED)
+// ─────────────────────────────────────────────────────────────
+export const publicVisitorRequest = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const {
+      fullName, phone, email, category, nationalId, address, company,
+      hostId, purpose, department, visitDate, expectedArrival,
+      expectedDeparture, accompanyingCount, notes,
+    } = req.body;
+
+    if (!fullName || !phone || !hostId || !purpose || !department || !visitDate || !expectedArrival || !expectedDeparture) {
+      res.status(400).json({ success: false, message: 'Missing required fields' });
+      return;
+    }
+
+    if (!email) {
+      res.status(400).json({ success: false, message: 'Email is required so we can send your QR pass' });
+      return;
+    }
+
+    // Verify host exists
+    const host = await User.findOne({ _id: hostId, role: { $in: ['teacher', 'admin'] }, isActive: true });
+    if (!host) {
+      res.status(404).json({ success: false, message: 'Selected host not found' });
+      return;
+    }
+
+    // Find or create visitor profile
+    let visitor = await Visitor.findOne({ phone });
+    if (!visitor) {
+      visitor = await Visitor.create({
+        fullName, phone, email, category: category || 'guest',
+        nationalId, address, company, notes,
+      });
+    } else {
+      visitor.fullName = fullName;
+      visitor.email    = email || visitor.email;
+      if (nationalId) visitor.nationalId = nationalId;
+      await visitor.save();
+    }
+
+    if (visitor.isBlacklisted) {
+      res.status(403).json({ success: false, message: 'Your visit request cannot be processed at this time.' });
+      return;
+    }
+
+    // Use a system/admin user as registeredBy — pick first active admin
+    const adminUser = await User.findOne({ role: 'admin', isActive: true });
+    if (!adminUser) {
+      res.status(500).json({ success: false, message: 'No admin found to process request' });
+      return;
+    }
+
+    const visit = await VisitorVisit.create({
+      visitorId:         visitor._id,
+      hostId,
+      registeredBy:      adminUser._id,
+      visitType:         'pre-registered',
+      purpose,
+      department,
+      visitDate:         new Date(visitDate),
+      expectedArrival,
+      expectedDeparture,
+      accompanyingCount: accompanyingCount || 0,
+      status:            'pending',
+    });
+
+    // Notify host via in-app notification + socket
+    await createNotification(
+      hostId,
+      'New Visitor Request',
+      `${fullName} (${phone}) has requested a visit. Purpose: ${purpose}`,
+      'info',
+      `/visitor/approvals`
+    );
+
+    const io: Server = (req as any).app.get('io');
+    if (io) {
+      emitToUser(io, hostId, 'visitor:new_request', {
+        visitId: visit._id, visitorName: fullName, purpose, visitDate,
+      });
+    }
+
+    // Send confirmation email to visitor
+    const dateStr = new Date(visitDate).toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+    sendVisitorRequestEmail(email, fullName, host.name, department, dateStr, purpose).catch(() => {});
+
+    res.status(201).json({
+      success: true,
+      message: 'Your visit request has been submitted. The host will review and you will receive an email with your QR pass if approved.',
+      data: { visitId: visit._id, status: 'pending' },
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
+// PUBLIC: Get hosts list (no auth — for the public form)
+// ─────────────────────────────────────────────────────────────
+export const publicGetHosts = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const hosts = await User.find({ role: { $in: ['teacher', 'admin'] }, isActive: true })
+      .select('name email department role')
+      .sort({ name: 1 });
+    res.json({ success: true, data: { hosts } });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }

@@ -10,7 +10,7 @@ import { SkeletonCard } from '@/components/shared/LoadingSpinner'
 import ErrorState, { ChartEmpty } from '@/components/shared/ErrorState'
 import { analyticsService } from '@/services/analytics.service'
 
-const COLORS = ['#4F46E5', '#7C3AED', '#10B981', '#F59E0B', '#EF4444', '#06B6D4']
+const COLORS = ['#2563EB', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#06B6D4']
 
 export default function TeacherAnalyticsPage() {
   const { data, isLoading, isError, refetch } = useQuery({
@@ -60,15 +60,15 @@ export default function TeacherAnalyticsPage() {
               <AreaChart data={data.attendanceTrend}>
                 <defs>
                   <linearGradient id="tGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor="#7C3AED" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#7C3AED" stopOpacity={0} />
+                    <stop offset="5%"  stopColor="#2563EB" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="date"  tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} tickFormatter={(v) => v.slice(5)} />
                 <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
                 <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '12px' }} />
-                <Area type="monotone" dataKey="present" stroke="#7C3AED" strokeWidth={2} fill="url(#tGrad)" />
+                <Area type="monotone" dataKey="present" stroke="#2563EB" strokeWidth={2} fill="url(#tGrad)" />
               </AreaChart>
             </ResponsiveContainer>
           )}

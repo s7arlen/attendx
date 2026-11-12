@@ -10,7 +10,7 @@
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
-    --primary: 242 80% 60%;
+    --primary: 221.2 83.2% 53.3%;
     --primary-foreground: 210 40% 98%;
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
@@ -22,7 +22,7 @@
     --destructive-foreground: 210 40% 98%;
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 242 80% 60%;
+    --ring: 221.2 83.2% 53.3%;
     --radius: 0.75rem;
   }
 
@@ -33,7 +33,7 @@
     --card-foreground: 210 40% 98%;
     --popover: 222.2 84% 7%;
     --popover-foreground: 210 40% 98%;
-    --primary: 242 80% 65%;
+    --primary: 217.2 91.2% 59.8%;
     --primary-foreground: 222.2 84% 4.9%;
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
@@ -45,7 +45,7 @@
     --destructive-foreground: 210 40% 98%;
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
-    --ring: 242 80% 65%;
+    --ring: 217.2 91.2% 59.8%;
   }
 }
 
@@ -88,7 +88,7 @@
 
 /* Gradient text */
 .gradient-text {
-  background: linear-gradient(135deg, #4F46E5, #7C3AED);
+  background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 50%, #3b82f6 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -96,7 +96,7 @@
 
 /* Gradient bg */
 .gradient-bg {
-  background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+  background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 50%, #3b82f6 100%);
 }
 
 /* Card hover effect */
@@ -105,7 +105,7 @@
 }
 .card-hover:hover {
   transform: translateY(-2px);
-  box-shadow: 0 12px 40px rgba(79, 70, 229, 0.15);
+  box-shadow: 0 12px 40px rgba(37, 99, 235, 0.15);
 }
 
 /* Animated gradient border */
@@ -117,13 +117,13 @@
   position: absolute;
   inset: -1px;
   border-radius: inherit;
-  background: linear-gradient(135deg, #4F46E5, #7C3AED, #10B981);
+  background: linear-gradient(135deg, #1d4ed8, #2563eb, #10B981);
   z-index: -1;
 }
 
 /* QR code container glow */
 .qr-glow {
-  box-shadow: 0 0 40px rgba(79, 70, 229, 0.3);
+  box-shadow: 0 0 40px rgba(37, 99, 235, 0.35);
 }
 
 /* Status badge pulse animation */
@@ -148,8 +148,13 @@
 
 /* Sidebar active item */
 .sidebar-active {
-  background: linear-gradient(135deg, rgba(79, 70, 229, 0.15), rgba(124, 58, 237, 0.1));
-  border-right: 3px solid #4F46E5;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.15), rgba(59, 130, 246, 0.1));
+  border-right: 3px solid #2563EB;
+}
+
+/* Film grain noise texture */
+.bg-grain {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
 }
 
 /* Number counter animation */

@@ -23,11 +23,17 @@ import {
   getVisitors,
   getHosts,
   toggleBlacklist,
+  publicVisitorRequest,
+  publicGetHosts,
 } from '../controllers/visitor.controller';
 
 const router = Router();
 
-// All visitor routes require authentication
+// ── PUBLIC routes (no auth) ───────────────────────────────────
+router.get('/public/hosts', publicGetHosts);
+router.post('/public/request', publicVisitorRequest);
+
+// All other visitor routes require authentication
 router.use(authenticate);
 
 // ── Public (any authenticated user) ──────────────────────────

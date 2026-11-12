@@ -10,7 +10,7 @@ import StatCard from '@/components/shared/StatCard'
 import { SkeletonCard } from '@/components/shared/LoadingSpinner'
 import ErrorState, { ChartEmpty } from '@/components/shared/ErrorState'
 
-const COLORS = ['#4F46E5', '#7C3AED', '#10B981', '#F59E0B', '#EF4444', '#06B6D4', '#EC4899', '#F97316']
+const COLORS = ['#2563EB', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#06B6D4', '#EC4899', '#F97316']
 
 export default function AnalyticsPage() {
   const { data, isLoading, isError, refetch } = useQuery({
@@ -63,15 +63,15 @@ export default function AnalyticsPage() {
                 <AreaChart data={data.dailyAttendance}>
                   <defs>
                     <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor="#4F46E5" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#4F46E5" stopOpacity={0} />
+                      <stop offset="5%"  stopColor="#2563EB" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis dataKey="date"  tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} tickFormatter={v => v.slice(5)} />
                   <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
                   <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '12px' }} />
-                  <Area type="monotone" dataKey="count" stroke="#4F46E5" strokeWidth={2} fill="url(#g1)" />
+                  <Area type="monotone" dataKey="count" stroke="#2563EB" strokeWidth={2} fill="url(#g1)" />
                 </AreaChart>
               </ResponsiveContainer>
             )}

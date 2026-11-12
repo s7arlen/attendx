@@ -7,6 +7,7 @@ import { useThemeStore } from '@/store/themeStore'
 import DashboardLayout from '@/components/layout/DashboardLayout'
 
 // Auth Pages
+import WelcomePage from '@/pages/auth/WelcomePage'
 import LoginPage from '@/pages/auth/LoginPage'
 import RegisterPage from '@/pages/auth/RegisterPage'
 import ForgotPasswordPage from '@/pages/auth/ForgotPasswordPage'
@@ -55,6 +56,7 @@ import VisitorHistoryPage from '@/pages/visitor/VisitorHistoryPage'
 import VisitorAnalyticsPage from '@/pages/visitor/VisitorAnalyticsPage'
 import EventManagementPage from '@/pages/visitor/EventManagementPage'
 import VisitDetailPage from '@/pages/visitor/VisitDetailPage'
+import VisitorRequestPage from '@/pages/visitor/VisitorRequestPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -79,7 +81,7 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode;
 
 function RootRedirect() {
   const { isAuthenticated, user } = useAuthStore()
-  if (!isAuthenticated) return <Navigate to="/login" replace />
+  if (!isAuthenticated) return <Navigate to="/welcome" replace />
   if (user?.role === 'admin') return <Navigate to="/len-admin" replace />
   if (user?.role === 'security') return <Navigate to="/visitor/gate" replace />
   return <Navigate to={`/${user?.role}`} replace />
@@ -100,10 +102,12 @@ export default function App() {
         <ThemeSync />
         <Routes>
           {/* Public */}
+          <Route path="/welcome" element={<WelcomePage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/visitor-request" element={<VisitorRequestPage />} />
           <Route path="/" element={<RootRedirect />} />
 
           {/* Admin */}

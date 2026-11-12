@@ -71,15 +71,15 @@ export default function TeacherDashboard() {
               <AreaChart data={analytics?.attendanceTrend || []}>
                 <defs>
                   <linearGradient id="teacherGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#7C3AED" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#7C3AED" stopOpacity={0} />
+                    <stop offset="5%" stopColor="#2563EB" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} tickFormatter={(v) => v.slice(5)} />
                 <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
                 <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '12px' }} />
-                <Area type="monotone" dataKey="present" stroke="#7C3AED" strokeWidth={2} fill="url(#teacherGrad)" />
+                <Area type="monotone" dataKey="present" stroke="#2563EB" strokeWidth={2} fill="url(#teacherGrad)" />
               </AreaChart>
             </ResponsiveContainer>
           )}

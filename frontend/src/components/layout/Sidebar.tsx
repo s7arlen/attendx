@@ -12,8 +12,9 @@ import { useAuthStore } from '@/store/authStore'
 
 interface NavItem {
   label: string
-  icon: React.ElementType
-  path: string
+  icon?: React.ElementType
+  path?: string
+  isHeader?: boolean
   group?: string
 }
 
@@ -28,7 +29,7 @@ const adminNavItems: NavItem[] = [
   { label: 'Disputes',   icon: AlertTriangle,    path: '/len-admin/disputes' },
   { label: 'Audit Logs', icon: Shield,           path: '/len-admin/audit-logs' },
   // Visitor Management
-  { label: '— Visitors —',       icon: Building2,      path: '/visitor',           group: 'visitor' },
+  { label: 'VISITOR MANAGEMENT', isHeader: true },
   { label: 'Visitor Dashboard',   icon: LayoutDashboard, path: '/visitor',          group: 'visitor' },
   { label: 'All Visits',          icon: Users,           path: '/visitor/visits',   group: 'visitor' },
   { label: 'Register Visitor',    icon: UserPlus,        path: '/visitor/register', group: 'visitor' },
@@ -49,7 +50,7 @@ const teacherNavItems: NavItem[] = [
   { label: 'Sessions',    icon: QrCode,          path: '/teacher/sessions' },
   { label: 'Analytics',   icon: BarChart3,       path: '/teacher/analytics' },
   // Visitor
-  { label: '— Visitors —',  icon: Building2,       path: '/visitor',             group: 'visitor' },
+  { label: 'VISITOR MANAGEMENT', isHeader: true },
   { label: 'My Requests',   icon: ClipboardCheck,  path: '/visitor/my-requests', group: 'visitor' },
   { label: 'Events',        icon: CalendarDays,    path: '/visitor/events',      group: 'visitor' },
   { label: 'Profile',   icon: UserCircle,      path: '/teacher/profile' },
@@ -135,10 +136,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
                 transition={{ duration: 0.2 }}
                 className="flex flex-col overflow-hidden whitespace-nowrap"
               >
-                <span className="font-bold text-lg leading-tight gradient-text">AttendX</span>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-widest">
-                  Scan · Verify · Attend
-                </span>
+                <span className="font-bold text-lg leading-tight tracking-tight text-foreground">AttendX</span>
               </motion.div>
             )}
           </AnimatePresence>
@@ -179,14 +177,15 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
         {/* ── Nav ── */}
         <nav className="flex-1 py-3 space-y-0.5 px-2 overflow-y-auto overflow-x-hidden">
           {navItems.map((item) => {
-            // Separator item
-            if (item.label.startsWith('—')) {
+            // Header item
+            if (item.isHeader) {
               return !collapsed ? (
-                <div key={item.path + '-sep'} className="pt-3 pb-1 px-3">
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Visitor Management</p>
+                <div key={item.label} className="pt-4 pb-1.5 px-3">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{item.label}</p>
                 </div>
-              ) : <div key={item.path + '-sep'} className="pt-2 border-t border-border mx-2" />
+              ) : <div key={item.label} className="pt-2 border-t border-border mx-2" />
             }
+            if (!item.path || !item.icon) return null
             const Icon = item.icon
             const isActive =
               location.pathname === item.path ||

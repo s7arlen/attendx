@@ -11,7 +11,7 @@ import { SkeletonCard } from '@/components/shared/LoadingSpinner'
 import ErrorState, { ChartEmpty } from '@/components/shared/ErrorState'
 import { analyticsService } from '@/services/analytics.service'
 
-const COLORS = ['#4F46E5', '#7C3AED', '#10B981', '#F59E0B', '#EF4444', '#06B6D4']
+const COLORS = ['#2563EB', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#06B6D4']
 
 export default function StudentAnalyticsPage() {
   const { data, isLoading, isError, refetch } = useQuery({

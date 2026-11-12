@@ -87,15 +87,15 @@ export default function AdminDashboard() {
                     <AreaChart data={analytics.dailyAttendance}>
                       <defs>
                         <linearGradient id="ag1" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#4F46E5" stopOpacity={0.3} />
-                          <stop offset="95%" stopColor="#4F46E5" stopOpacity={0} />
+                          <stop offset="5%" stopColor="#2563EB" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                       <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} tickFormatter={(v) => v.slice(5)} />
                       <YAxis tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
                       <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '12px' }} />
-                      <Area type="monotone" dataKey="count" stroke="#4F46E5" strokeWidth={2} fill="url(#ag1)" />
+                      <Area type="monotone" dataKey="count" stroke="#2563EB" strokeWidth={2} fill="url(#ag1)" />
                     </AreaChart>
                   </ResponsiveContainer>
                 )}
@@ -121,7 +121,7 @@ export default function AdminDashboard() {
                       <XAxis dataKey="subjectCode" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
                       <YAxis tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
                       <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '12px' }} />
-                      <Bar dataKey="count" fill="#7C3AED" radius={[6, 6, 0, 0]} />
+                      <Bar dataKey="count" fill="#3B82F6" radius={[6, 6, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 )}
