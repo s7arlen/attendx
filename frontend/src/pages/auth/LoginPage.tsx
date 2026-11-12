@@ -3,560 +3,457 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
-  QrCode,
-  Eye,
-  EyeOff,
-  Loader2,
-  Mail,
-  Lock,
-  ArrowLeft,
-  GraduationCap,
-  BookOpen,
-  Shield,
+  QrCode, Eye, EyeOff, Loader2,
+  TrendingUp, Users, CheckCircle2, Clock,
+  BarChart3, Wifi, ShieldCheck, Zap,
+  GraduationCap, BookOpen, Shield,
 } from 'lucide-react'
 import { authService } from '@/services/auth.service'
 import { useAuthStore } from '@/store/authStore'
 import { toast } from '@/hooks/useToast'
 import { ApiError } from '@/types'
 
+// ── Schema (unchanged) ──────────────────────────────────────
 const schema = z.object({
-  email: z.string().email('Please enter a valid email address'),
+  email:    z.string().email('Please enter a valid email address'),
   password: z.string().min(1, 'Password is required'),
 })
 type FormData = z.infer<typeof schema>
 
+// ── Sparkline ───────────────────────────────────────────────
+function Spark({ values, color = '#a78bfa' }: { values: number[]; color?: string }) {
+  const W = 90, H = 32
+  const max = Math.max(...values), min = Math.min(...values), range = max - min || 1
+  const xs = values.map((_, i) => (i / (values.length - 1)) * W)
+  const ys = values.map(v => H - ((v - min) / range) * H * 0.75 - H * 0.1)
+  const d  = xs.map((x, i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${ys[i].toFixed(1)}`).join(' ')
+  const id = `g${color.replace('#', '')}`
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: H }} aria-hidden="true">
+      <defs>
+        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stopColor={color} stopOpacity="0.4" />
+          <stop offset="100%" stopColor={color} stopOpacity="0"   />
+        </linearGradient>
+      </defs>
+      <path d={`${d} L${W},${H} L0,${H} Z`} fill={`url(#${id})`} />
+      <path d={d} fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+// ── Floating glass card ─────────────────────────────────────
+function GCard({ children, style = {}, delay = 0, rotate = 0 }: {
+  children: React.ReactNode; style?: React.CSSProperties; delay?: number; rotate?: number
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 24, scale: 0.93 }}
+      animate={{ opacity: 1, y: 0,  scale: 1    }}
+      transition={{ duration: 0.75, delay, ease: [0.22, 1, 0.36, 1] }}
+      whileHover={{ y: -5, transition: { duration: 0.2 } }}
+      style={{
+        rotate, position: 'absolute',
+        background: 'rgba(255,255,255,0.058)',
+        backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)',
+        border: '1px solid rgba(255,255,255,0.1)',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.08)',
+        borderRadius: 16, ...style,
+      }}
+    >
+      {children}
+    </motion.div>
+  )
+}
+
+function AnimBar({ height, color, delay }: { height: number; color: string; delay: number }) {
+  return (
+    <motion.div className="flex-1 rounded-sm"
+      initial={{ scaleY: 0 }} animate={{ scaleY: 1 }}
+      style={{ height: `${height}%`, background: color, transformOrigin: 'bottom', minHeight: 2 }}
+      transition={{ delay, duration: 0.45, ease: 'easeOut' }}
+    />
+  )
+}
+
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [rememberMe, setRememberMe] = useState(true)
-  const navigate = useNavigate()
+  const [loading, setLoading]           = useState(false)
+  const [focused, setFocused]           = useState<'email' | 'password' | null>(null)
+  const navigate    = useNavigate()
   const { setAuth } = useAuthStore()
 
-  const {
-    register,
-    handleSubmit,
-    setValue,
-    formState: { errors },
-  } = useForm<FormData>({
+  const { register, handleSubmit, setValue, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: {
-      email: '',
-      password: '',
-    },
+    defaultValues: { email: '', password: '' },
   })
 
+  // ── Auth logic (unchanged) ──────────────────────────────
   const onSubmit = async (data: FormData) => {
     setLoading(true)
     try {
       const result = await authService.login(data)
       setAuth(result.user, result.accessToken, result.refreshToken)
-      toast({
-        title: 'Welcome back!',
-        description: `Logged in as ${result.user.name}`,
-        variant: 'success',
-      })
+      toast({ title: 'Welcome back!', description: `Logged in as ${result.user.name}`, variant: 'success' })
       navigate(result.user.role === 'admin' ? '/len-admin' : `/${result.user.role}`)
     } catch (err) {
       const error = err as ApiError
-      toast({
-        title: 'Login failed',
-        description: error.response?.data?.message || 'Invalid email or password',
-        variant: 'destructive',
-      })
+      toast({ title: 'Login failed', description: error.response?.data?.message || 'Invalid email or password', variant: 'destructive' })
     } finally {
       setLoading(false)
     }
   }
 
-  const fillDemoRole = (role: 'student' | 'teacher' | 'admin') => {
+  // ── Demo fill (unchanged) ──────────────────────────────
+  const fillDemo = (role: 'student' | 'teacher' | 'admin') => {
     const creds = {
       student: { email: 'student1@attendx.com', password: 'Student@123' },
-      teacher: { email: 'teacher@attendx.com', password: 'Teacher@123' },
-      admin: { email: 'admin@attendx.com', password: 'Admin@123' },
+      teacher: { email: 'teacher1@attendx.com', password: 'Teacher@123' },
+      admin:   { email: 'admin@attendx.com',    password: 'Admin@123'   },
     }
     setValue('email', creds[role].email)
     setValue('password', creds[role].password)
-    toast({
-      title: `${role.charAt(0).toUpperCase() + role.slice(1)} Demo Filled`,
-      description: `Loaded demo credentials for ${creds[role].email}`,
-      variant: 'default',
-    })
+    toast({ title: `${role.charAt(0).toUpperCase() + role.slice(1)} credentials filled`, variant: 'default' })
   }
 
+  const iStyle = (f: 'email' | 'password', err: boolean): React.CSSProperties => ({
+    width: '100%', height: 46, borderRadius: 12, outline: 'none',
+    padding: '0 44px 0 14px',
+    background: focused === f ? 'rgba(139,92,246,0.1)' : 'rgba(255,255,255,0.05)',
+    border: err ? '1px solid rgba(239,68,68,0.6)' : focused === f ? '1px solid rgba(139,92,246,0.65)' : '1px solid rgba(255,255,255,0.1)',
+    color: 'rgba(255,255,255,0.9)', fontSize: 14,
+    boxShadow: focused === f && !err ? '0 0 0 3px rgba(139,92,246,0.14)' : 'none',
+    transition: 'all 0.2s ease',
+  })
+
   return (
-    <div className="relative h-[100dvh] max-h-[100dvh] w-full bg-[#fafbfc] dark:bg-slate-900 overflow-hidden font-sans antialiased select-none md:select-auto">
-      {/* Seamless film-grain texture across the entire screen */}
+    <div className="min-h-screen flex overflow-hidden" style={{ background: '#06040f' }}>
+
+      {/* ═══════════════════════════════════════════════
+          LEFT PANEL — dark + floating glass cards
+          (hidden on mobile)
+      ═══════════════════════════════════════════════ */}
       <div
-        className="fixed inset-0 pointer-events-none z-30 opacity-[0.055] dark:opacity-[0.04] mix-blend-multiply dark:mix-blend-screen bg-grain"
-        aria-hidden="true"
-      />
-
-      {/* ═══════════════════════════════════════════════════════════════════════
-          MOBILE VIEW (Exact match to user's attached Image 2 mobile app UI)
-          ═══════════════════════════════════════════════════════════════════════ */}
-      <div className="flex md:hidden flex-col h-[100dvh] max-h-[100dvh] w-full overflow-hidden bg-gradient-to-br from-[#1e3a8a] via-[#1d4ed8] to-[#2563eb]">
-        {/* Mobile Top Header (Capsule gradient background + AttendX logo) */}
-        <div className="relative h-[27dvh] min-h-[160px] max-h-[200px] w-full flex flex-col items-center justify-center shrink-0 overflow-hidden text-white">
-          {/* Floating Pill Capsules & Hairlines SVG */}
-          <svg
-            className="absolute inset-0 w-full h-full pointer-events-none z-0"
-            preserveAspectRatio="xMidYMid slice"
-            viewBox="0 0 400 300"
-            aria-hidden="true"
-          >
-            <defs>
-              <linearGradient id="mCapsule1" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#60a5fa" stopOpacity="0.45" />
-                <stop offset="100%" stopColor="#1d4ed8" stopOpacity="0.15" />
-              </linearGradient>
-              <linearGradient id="mCapsule2" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#93c5fd" stopOpacity="0.35" />
-                <stop offset="100%" stopColor="#2563eb" stopOpacity="0.1" />
-              </linearGradient>
-              <linearGradient id="mHairline" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#ffffff" stopOpacity="0.35" />
-                <stop offset="100%" stopColor="#ffffff" stopOpacity="0.05" />
-              </linearGradient>
-            </defs>
-
-            <g transform="rotate(-35 200 150)">
-              <rect x="-80" y="-100" width="140" height="400" rx="70" fill="url(#mCapsule1)" />
-              <rect x="90" y="-120" width="160" height="450" rx="80" fill="url(#mCapsule2)" />
-              <rect x="220" y="-80" width="130" height="380" rx="65" fill="rgba(255,255,255,0.08)" />
-              <line x1="-100" y1="50" x2="350" y2="50" stroke="url(#mHairline)" strokeWidth="1.5" />
-              <line x1="20" y1="180" x2="450" y2="180" stroke="url(#mHairline)" strokeWidth="1.2" />
-            </g>
-          </svg>
-
-          {/* Back to Welcome Screen Button */}
-          <button
-            type="button"
-            onClick={() => navigate('/welcome')}
-            className="absolute top-3 left-4 p-2 text-white/80 hover:text-white rounded-full bg-white/10 backdrop-blur-sm transition-colors active:scale-95 z-20 cursor-pointer"
-            aria-label="Back to welcome page"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </button>
-
-          {/* AttendX Logo Badge (Image 2 - AttendX Logo Only) */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.3 }}
-            className="z-10 flex flex-col items-center"
-          >
-            <div className="w-14 h-14 rounded-2xl bg-white shadow-xl shadow-blue-950/40 flex items-center justify-center ring-4 ring-white/25">
-              <QrCode className="w-7 h-7 text-[#2563eb] stroke-[2.2]" />
-            </div>
-          </motion.div>
+        className="hidden lg:flex flex-col w-[54%] relative overflow-hidden flex-shrink-0"
+        style={{
+          background: 'linear-gradient(145deg,#0a0720 0%,#100d2e 45%,#160b40 75%,#0d0924 100%)',
+          borderRight: '1px solid rgba(255,255,255,0.05)',
+        }}
+      >
+        {/* Glow blobs */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          <motion.div className="absolute rounded-full"
+            style={{ width:520,height:520,left:'-12%',top:'-18%',background:'radial-gradient(circle,rgba(109,40,217,0.2) 0%,transparent 68%)',filter:'blur(55px)' }}
+            animate={{ scale:[1,1.1,1] }} transition={{ duration:11,repeat:Infinity,ease:'easeInOut' }} />
+          <motion.div className="absolute rounded-full"
+            style={{ width:420,height:420,right:'-8%',bottom:'-12%',background:'radial-gradient(circle,rgba(79,70,229,0.16) 0%,transparent 68%)',filter:'blur(55px)' }}
+            animate={{ scale:[1,1.14,1] }} transition={{ duration:15,repeat:Infinity,ease:'easeInOut',delay:2 }} />
         </div>
 
-        {/* Mobile Bottom Sheet (White rounded-t-[36px] container matching Image 2) */}
+        {/* Dot grid */}
+        <div className="absolute inset-0 pointer-events-none opacity-[0.055]"
+          style={{ backgroundImage:'radial-gradient(rgba(167,139,250,0.65) 1px,transparent 1px)',backgroundSize:'28px 28px' }} />
+
+        {/* Logo */}
+        <motion.div initial={{ opacity:0,y:-14 }} animate={{ opacity:1,y:0 }} transition={{ duration:0.55 }}
+          className="relative z-10 p-10 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+            style={{ background:'linear-gradient(135deg,rgba(109,40,217,0.9),rgba(139,92,246,0.9))',border:'1px solid rgba(255,255,255,0.18)',boxShadow:'0 4px 16px rgba(109,40,217,0.42)' }}>
+            <QrCode style={{ width:18,height:18,color:'white' }} />
+          </div>
+          <span className="text-white font-bold text-xl tracking-tight">AttendX</span>
+        </motion.div>
+
+        {/* Headline */}
+        <motion.div initial={{ opacity:0,y:20 }} animate={{ opacity:1,y:0 }} transition={{ duration:0.65,delay:0.14 }}
+          className="relative z-10 px-10 mt-1">
+          <h1 className="text-[2.4rem] font-extrabold leading-[1.18] tracking-tight text-white">
+            Smart Attendance,<br />
+            <span style={{ color:'rgba(167,139,250,0.85)' }}>Zero Proxies.</span>
+          </h1>
+          <p className="mt-3 text-sm leading-relaxed max-w-[300px]" style={{ color:'rgba(255,255,255,0.38)' }}>
+            Dynamic QR codes and session passwords — the most secure way to verify student attendance in real time.
+          </p>
+        </motion.div>
+
+        {/* Floating cards */}
+        <div className="relative flex-1">
+          {/* Card A — Attendance rate */}
+          <GCard delay={0.3} rotate={-2} style={{ top:'4%',right:'6%',width:214 }}>
+            <div className="p-4">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[9px] font-semibold uppercase tracking-widest" style={{ color:'rgba(255,255,255,0.38)' }}>Today's Attendance</p>
+                <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background:'rgba(139,92,246,0.18)' }}>
+                  <BarChart3 style={{ width:14,height:14,color:'#a78bfa' }} />
+                </div>
+              </div>
+              <div className="flex items-end gap-2">
+                <span className="text-[2.1rem] font-black text-white leading-none">96.5%</span>
+                <span className="flex items-center gap-0.5 text-xs font-semibold mb-1" style={{ color:'#34d399' }}>
+                  <TrendingUp style={{ width:12,height:12 }} />+4.2%
+                </span>
+              </div>
+              <p className="text-[9px] mt-0.5 mb-3" style={{ color:'rgba(255,255,255,0.28)' }}>from yesterday</p>
+              <div className="flex items-end gap-0.5" style={{ height:40 }}>
+                {[42,60,52,74,68,82,97].map((h,i) => (
+                  <AnimBar key={i} height={h} delay={0.7+i*0.06}
+                    color={i===6 ? 'linear-gradient(180deg,#7c3aed,#a78bfa)' : 'rgba(167,139,250,0.22)'} />
+                ))}
+              </div>
+            </div>
+          </GCard>
+
+          {/* Card B — Live session */}
+          <GCard delay={0.42} rotate={2.5} style={{ top:'33%',left:'4%',width:188 }}>
+            <div className="p-3.5">
+              <div className="flex items-center gap-2 mb-2.5">
+                <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
+                  <motion.span className="absolute inline-flex h-full w-full rounded-full" style={{ background:'#34d399' }}
+                    animate={{ scale:[1,2.2,1],opacity:[0.75,0,0.75] }} transition={{ duration:1.8,repeat:Infinity }} />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full" style={{ background:'#10b981' }} />
+                </span>
+                <span className="text-xs font-semibold text-white">Live Session Active</span>
+              </div>
+              <p className="text-[9px] ml-[18px] mb-3" style={{ color:'rgba(255,255,255,0.32)' }}>CSE — Section A</p>
+              <div className="flex items-center gap-2 rounded-xl px-2.5 py-1.5" style={{ background:'rgba(139,92,246,0.14)',border:'1px solid rgba(139,92,246,0.22)' }}>
+                <Users style={{ width:12,height:12,color:'#a78bfa',flexShrink:0 }} />
+                <span className="text-[9px] font-medium" style={{ color:'#c4b5fd' }}>24 / 60 marked present</span>
+              </div>
+            </div>
+          </GCard>
+
+          {/* Card C — Trend */}
+          <GCard delay={0.52} rotate={1.5} style={{ top:'31%',right:'4%',width:198 }}>
+            <div className="p-4">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[9px] font-semibold uppercase tracking-widest" style={{ color:'rgba(255,255,255,0.38)' }}>Weekly Trend</p>
+                <span className="text-[9px] font-bold" style={{ color:'#34d399' }}>+12.4%</span>
+              </div>
+              <p className="text-lg font-bold text-white mb-2">82 sessions</p>
+              <Spark values={[52,45,68,60,82,74,96]} color="#a78bfa" />
+              <div className="flex justify-between mt-1">
+                {['M','T','W','T','F','S','S'].map((d,i) => (
+                  <span key={i} className="text-[8px]" style={{ color:'rgba(255,255,255,0.2)' }}>{d}</span>
+                ))}
+              </div>
+            </div>
+          </GCard>
+
+          {/* Card D — Verified */}
+          <GCard delay={0.6} rotate={-1.5} style={{ bottom:'24%',right:'7%',width:172 }}>
+            <div className="p-3 flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background:'rgba(52,211,153,0.14)' }}>
+                <CheckCircle2 style={{ width:16,height:16,color:'#34d399' }} />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-white">1,284 Verified</p>
+                <p className="text-[9px]" style={{ color:'rgba(255,255,255,0.3)' }}>attendance records</p>
+              </div>
+            </div>
+          </GCard>
+
+          {/* Card E — Next class */}
+          <GCard delay={0.68} rotate={1} style={{ bottom:'9%',left:'7%',width:168 }}>
+            <div className="p-3 flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background:'rgba(251,191,36,0.13)' }}>
+                <Clock style={{ width:16,height:16,color:'#fbbf24' }} />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-white">Next: 10:30 AM</p>
+                <p className="text-[9px]" style={{ color:'rgba(255,255,255,0.3)' }}>Data Structures · B2</p>
+              </div>
+            </div>
+          </GCard>
+
+          {/* Card F — Wifi */}
+          <GCard delay={0.74} rotate={-2} style={{ bottom:'38%',left:'11%',width:154 }}>
+            <div className="p-3 flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background:'rgba(109,40,217,0.18)' }}>
+                <Wifi style={{ width:16,height:16,color:'#a78bfa' }} />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-white">Real-time Sync</p>
+                <p className="text-[9px]" style={{ color:'rgba(255,255,255,0.3)' }}>Socket.IO active</p>
+              </div>
+            </div>
+          </GCard>
+        </div>
+
+        {/* Bottom stats */}
+        <motion.div initial={{ opacity:0,y:14 }} animate={{ opacity:1,y:0 }} transition={{ delay:0.9,duration:0.6 }}
+          className="relative z-10 px-10 pb-10">
+          <div className="grid grid-cols-3 gap-3">
+            {[{ value:'99.9%', label:'Accuracy' },{ value:'< 2s', label:'Verification' },{ value:'0', label:'Proxy Attendance' }].map(s => (
+              <div key={s.label} className="rounded-xl p-3"
+                style={{ background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.07)' }}>
+                <p className="text-lg font-bold text-white">{s.value}</p>
+                <p className="text-[9px] mt-0.5" style={{ color:'rgba(255,255,255,0.33)' }}>{s.label}</p>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs mt-4" style={{ color:'rgba(255,255,255,0.16)' }}>© 2025 AttendX. Built for modern education.</p>
+        </motion.div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════
+          RIGHT PANEL — login form
+      ═══════════════════════════════════════════════ */}
+      <div className="flex-1 flex items-center justify-center p-6 lg:p-14 relative min-h-screen"
+        style={{ background:'#0d0b1f' }}>
+
+        {/* Subtle glow */}
+        <div className="absolute top-0 left-0 w-72 h-72 pointer-events-none"
+          style={{ background:'radial-gradient(circle at 0% 0%,rgba(109,40,217,0.08) 0%,transparent 70%)' }} />
+
         <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35 }}
-          className="flex-1 w-full bg-[#fafbfc] dark:bg-slate-900 rounded-t-[36px] shadow-2xl px-6 pt-5 pb-4 flex flex-col justify-between overflow-hidden z-10"
+          initial={{ opacity:0,x:28 }}
+          animate={{ opacity:1,x:0 }}
+          transition={{ duration:0.65,ease:[0.22,1,0.36,1] }}
+          className="w-full max-w-[390px] relative z-10"
         >
-          {/* Heading */}
-          <div className="text-center pt-1">
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-              hello!
-            </h2>
-            <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Sign in with your AttendX account
-            </p>
+          {/* Logo (always shown on mobile, hidden on desktop since left panel has it) */}
+          <div className="lg:hidden flex items-center gap-3 mb-9">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+              style={{ background:'linear-gradient(135deg,rgba(109,40,217,0.9),rgba(139,92,246,0.9))',border:'1px solid rgba(255,255,255,0.15)' }}>
+              <QrCode style={{ width:18,height:18,color:'white' }} />
+            </div>
+            <span className="text-white font-bold text-xl tracking-tight">AttendX</span>
           </div>
 
-          {/* Form with Pill Inputs */}
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-3 my-auto">
-            {/* Email Pill Input */}
-            <div className="space-y-1">
-              <div className="relative flex items-center">
-                <div className="absolute left-4 pointer-events-none text-slate-400">
-                  <Mail className="w-4 h-4" />
-                </div>
-                <input
-                  id="mobile-email"
-                  type="email"
-                  placeholder="Email"
-                  {...register('email')}
-                  autoComplete="email"
-                  className={`w-full rounded-full border bg-white dark:bg-slate-800 py-2.5 pl-11 pr-4 text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 shadow-sm transition-all focus:outline-none focus:ring-2 ${
-                    errors.email
-                      ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20'
-                      : 'border-slate-200 dark:border-slate-700 focus:border-blue-600 focus:ring-blue-600/20'
-                  }`}
-                />
-              </div>
-              {errors.email && (
-                <p className="text-[11px] text-red-500 pl-4">{errors.email.message}</p>
-              )}
+          {/* Heading */}
+          <motion.div initial={{ opacity:0,y:10 }} animate={{ opacity:1,y:0 }} transition={{ delay:0.1 }} className="mb-8">
+            <h2 className="text-[1.9rem] font-extrabold tracking-tight text-white">Welcome back</h2>
+            <p className="text-sm mt-1.5" style={{ color:'rgba(255,255,255,0.35)' }}>Sign in to your AttendX account</p>
+          </motion.div>
+
+          {/* Form */}
+          <motion.form onSubmit={handleSubmit(onSubmit)} className="space-y-4"
+            initial={{ opacity:0,y:10 }} animate={{ opacity:1,y:0 }} transition={{ delay:0.22 }}>
+
+            {/* Email */}
+            <div className="space-y-1.5">
+              <label htmlFor="login-email" className="block text-[11px] font-semibold uppercase tracking-[0.1em]"
+                style={{ color:'rgba(255,255,255,0.4)' }}>Email address</label>
+              <input
+                id="login-email" type="email" autoComplete="email"
+                placeholder="you@university.edu"
+                {...register('email')}
+                onFocus={() => setFocused('email')} onBlur={() => setFocused(null)}
+                style={{ ...iStyle('email', !!errors.email), paddingLeft: 14, paddingRight: 14 }}
+              />
+              <AnimatePresence>
+                {errors.email && (
+                  <motion.p initial={{ opacity:0,y:-4 }} animate={{ opacity:1,y:0 }} exit={{ opacity:0 }}
+                    className="text-xs text-red-400 pl-1">{errors.email.message}</motion.p>
+                )}
+              </AnimatePresence>
             </div>
 
-            {/* Password Pill Input */}
-            <div className="space-y-1">
-              <div className="relative flex items-center">
-                <div className="absolute left-4 pointer-events-none text-slate-400">
-                  <Lock className="w-4 h-4" />
-                </div>
+            {/* Password */}
+            <div className="space-y-1.5">
+              <label htmlFor="login-password" className="block text-[11px] font-semibold uppercase tracking-[0.1em]"
+                style={{ color:'rgba(255,255,255,0.4)' }}>Password</label>
+              <div className="relative">
                 <input
-                  id="mobile-password"
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="Password"
+                  id="login-password" type={showPassword ? 'text' : 'password'}
+                  autoComplete="current-password" placeholder="Enter your password"
                   {...register('password')}
-                  autoComplete="current-password"
-                  className={`w-full rounded-full border bg-white dark:bg-slate-800 py-2.5 pl-11 pr-11 text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 shadow-sm transition-all focus:outline-none focus:ring-2 ${
-                    errors.password
-                      ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20'
-                      : 'border-slate-200 dark:border-slate-700 focus:border-blue-600 focus:ring-blue-600/20'
-                  }`}
+                  onFocus={() => setFocused('password')} onBlur={() => setFocused(null)}
+                  style={iStyle('password', !!errors.password)}
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
+                <button type="button" onClick={() => setShowPassword(!showPassword)}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  className="absolute right-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 focus:outline-none transition-colors"
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 transition-colors"
+                  style={{ color:'rgba(255,255,255,0.3)' }}>
+                  {showPassword ? <EyeOff style={{ width:16,height:16 }} /> : <Eye style={{ width:16,height:16 }} />}
                 </button>
               </div>
-              {errors.password && (
-                <p className="text-[11px] text-red-500 pl-4">{errors.password.message}</p>
-              )}
+              <AnimatePresence>
+                {errors.password && (
+                  <motion.p initial={{ opacity:0,y:-4 }} animate={{ opacity:1,y:0 }} exit={{ opacity:0 }}
+                    className="text-xs text-red-400 pl-1">{errors.password.message}</motion.p>
+                )}
+              </AnimatePresence>
             </div>
 
-            {/* Remember Me & Forgot Password */}
-            <div className="flex items-center justify-between px-2 pt-0.5">
-              <label className="flex items-center gap-2 cursor-pointer text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 select-none">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 dark:border-slate-600 focus:ring-blue-500 cursor-pointer accent-blue-600"
-                />
-                <span>Remember for 30 days</span>
-              </label>
-
-              <Link
-                to="/forgot-password"
-                className="text-[11px] sm:text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
-              >
+            {/* Forgot password row */}
+            <div className="flex justify-end">
+              <Link to="/forgot-password" className="text-xs font-medium transition-colors" style={{ color:'#a78bfa' }}
+                onMouseEnter={e => (e.currentTarget.style.color='#c4b5fd')}
+                onMouseLeave={e => (e.currentTarget.style.color='#a78bfa')}>
                 Forgot password?
               </Link>
             </div>
 
-            {/* Submit Pill Button (Matching Image 2: Pill Sign In) */}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full rounded-full bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-semibold py-3 px-6 shadow-md shadow-blue-600/25 text-xs sm:text-sm tracking-wide active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
-            >
+            {/* Submit */}
+            <motion.button type="submit" disabled={loading}
+              whileHover={{ scale: loading ? 1 : 1.012 }} whileTap={{ scale: loading ? 1 : 0.985 }}
+              className="w-full flex items-center justify-center gap-2.5 relative overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold text-sm"
+              style={{ height:48,borderRadius:12,background:'linear-gradient(135deg,#5b21b6 0%,#6d28d9 50%,#7c3aed 100%)',border:'1px solid rgba(167,139,250,0.22)',boxShadow:'0 8px 28px rgba(109,40,217,0.42),inset 0 1px 0 rgba(255,255,255,0.12)' }}>
+              <motion.span className="absolute inset-0 pointer-events-none"
+                style={{ background:'linear-gradient(105deg,transparent 35%,rgba(255,255,255,0.13) 50%,transparent 65%)' }}
+                animate={{ x:['-100%','200%'] }} transition={{ duration:2,repeat:Infinity,repeatDelay:3,ease:'linear' }} />
               {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Signing in...</span>
-                </>
-              ) : (
-                <span>Sign In</span>
-              )}
-            </button>
-          </form>
+                <><Loader2 style={{ width:16,height:16 }} className="animate-spin" />Signing in…</>
+              ) : 'Sign in to AttendX'}
+            </motion.button>
+          </motion.form>
 
-          {/* Social / Demo Role Login Badges (Matching Image 2: red/yellow/blue squares) */}
-          <div className="space-y-2">
-            <div className="relative flex items-center justify-center">
-              <div className="border-t border-slate-200 dark:border-slate-800 w-full" />
-              <span className="absolute bg-[#fafbfc] dark:bg-slate-900 px-3 text-[10px] sm:text-[11px] text-slate-400 uppercase tracking-wider">
-                or demo fill
-              </span>
+          {/* Demo fill */}
+          <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} transition={{ delay:0.42 }}
+            className="mt-6 pt-5 flex items-center justify-between"
+            style={{ borderTop:'1px solid rgba(255,255,255,0.07)' }}>
+            <span className="text-xs" style={{ color:'rgba(255,255,255,0.28)' }}>Demo fill:</span>
+            <div className="flex items-center gap-2">
+              {([
+                { role:'student' as const, icon:GraduationCap, color:'rgba(99,102,241,0.2)',  border:'rgba(99,102,241,0.4)',  text:'#818cf8', label:'Student' },
+                { role:'teacher' as const, icon:BookOpen,      color:'rgba(245,158,11,0.15)', border:'rgba(245,158,11,0.4)',  text:'#fbbf24', label:'Teacher' },
+                { role:'admin'   as const, icon:Shield,        color:'rgba(239,68,68,0.15)',  border:'rgba(239,68,68,0.4)',   text:'#f87171', label:'Admin'   },
+              ]).map(({ role, icon:Icon, color, border, text, label }) => (
+                <motion.button key={role} type="button" onClick={() => fillDemo(role)}
+                  whileHover={{ scale:1.08 }} whileTap={{ scale:0.92 }}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all"
+                  style={{ background:color, border:`1px solid ${border}`, color:text }}>
+                  <Icon style={{ width:12,height:12 }} />
+                  {label}
+                </motion.button>
+              ))}
             </div>
+          </motion.div>
 
-            <div className="flex items-center justify-center gap-3 pt-0.5">
-              {/* Red - Admin */}
-              <button
-                type="button"
-                onClick={() => fillDemoRole('admin')}
-                title="Fill Admin Demo"
-                className="w-10 h-10 rounded-xl bg-gradient-to-br from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white flex items-center justify-center shadow-md shadow-red-500/25 active:scale-90 transition-transform cursor-pointer"
-              >
-                <Shield className="w-4 h-4" />
-              </button>
-
-              {/* Yellow - Teacher */}
-              <button
-                type="button"
-                onClick={() => fillDemoRole('teacher')}
-                title="Fill Teacher Demo"
-                className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-white flex items-center justify-center shadow-md shadow-amber-500/25 active:scale-90 transition-transform cursor-pointer"
-              >
-                <BookOpen className="w-4 h-4" />
-              </button>
-
-              {/* Blue - Student */}
-              <button
-                type="button"
-                onClick={() => fillDemoRole('student')}
-                title="Fill Student Demo"
-                className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white flex items-center justify-center shadow-md shadow-blue-500/25 active:scale-90 transition-transform cursor-pointer"
-              >
-                <GraduationCap className="w-4 h-4" />
-              </button>
-            </div>
-
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center">
-              Tap red, yellow or blue icon to auto-fill demo portal
-            </p>
-          </div>
-
-          {/* Footer Sign Up Link */}
-          <p className="text-center text-xs text-slate-500 dark:text-slate-400 pb-1">
+          {/* Sign up link */}
+          <motion.p initial={{ opacity:0 }} animate={{ opacity:1 }} transition={{ delay:0.5 }}
+            className="text-center text-sm mt-5" style={{ color:'rgba(255,255,255,0.3)' }}>
             Don't have an account?{' '}
-            <Link
-              to="/register"
-              className="text-blue-600 dark:text-blue-400 font-semibold hover:underline"
-            >
+            <Link to="/register" className="font-semibold transition-colors" style={{ color:'#a78bfa' }}
+              onMouseEnter={e => (e.currentTarget.style.color='#c4b5fd')}
+              onMouseLeave={e => (e.currentTarget.style.color='#a78bfa')}>
               Sign up
             </Link>
-          </p>
-        </motion.div>
-      </div>
+          </motion.p>
 
-      {/* ═══════════════════════════════════════════════════════════════════════
-          DESKTOP VIEW (Wave divider split-screen with SaaS form layout)
-          ═══════════════════════════════════════════════════════════════════════ */}
-      <div className="hidden md:flex flex-row h-full w-full">
-        {/* ── Left Hero Panel ───────────────────────────────────────────────── */}
-        <div className="relative w-[44%] lg:w-[42%] h-full bg-gradient-to-b from-[#1d4ed8] via-[#2563eb] to-[#3b82f6] text-white p-12 lg:p-16 flex flex-col justify-between items-center text-center overflow-hidden shrink-0">
-          {/* Ambient Glows */}
-          <div className="absolute -top-24 -left-24 w-80 h-80 bg-white/10 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute -bottom-24 -right-24 w-80 h-80 bg-blue-300/15 rounded-full blur-3xl pointer-events-none" />
-
-          {/* Top Label */}
-          <div className="w-full pt-4 z-10 flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => navigate('/welcome')}
-              className="text-white/80 hover:text-white text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Back</span>
-            </button>
-            <span className="text-white/80 text-sm tracking-wide font-medium">
-              Welcome to
-            </span>
-            <div className="w-10" />
-          </div>
-
-          {/* Center Brand Identity */}
-          <div className="my-auto py-8 z-10 flex flex-col items-center">
-            <div className="w-24 h-24 lg:w-28 lg:h-28 rounded-full bg-white shadow-2xl shadow-blue-950/20 flex items-center justify-center mb-5">
-              <QrCode className="w-12 h-12 lg:w-14 lg:h-14 text-[#2563eb] stroke-[2.2]" />
-            </div>
-
-            <h1 className="text-4xl lg:text-5xl font-bold tracking-tight text-white mb-3">
-              AttendX
-            </h1>
-
-            <p className="text-white/85 text-sm leading-relaxed max-w-[280px] mx-auto font-normal">
-              Dynamic QR codes & biometric verification for secure, real-time campus attendance.
-            </p>
-          </div>
-
-          {/* Bottom Copyright Tag */}
-          <div className="w-full pb-4 z-10">
-            <p className="text-xs text-white/60 font-medium">
-              © {new Date().getFullYear()} AttendX Platform
-            </p>
-          </div>
-
-          {/* Desktop Vertical Cloud SVG Divider */}
-          <div className="absolute top-0 -right-[1px] bottom-0 w-24 lg:w-32 pointer-events-none z-0 h-full">
-            <svg
-              className="h-full w-full"
-              viewBox="0 0 100 600"
-              preserveAspectRatio="none"
-              aria-hidden="true"
-            >
-              <path
-                d="M100,0 L56,0 C32,45 28,95 48,135 C66,170 66,190 54,215 C40,240 28,260 22,275 C10,310 26,345 42,380 C50,410 50,430 42,455 C30,480 18,510 16,530 C12,555 34,580 56,600 L100,600 Z"
-                fill="rgba(255,255,255,0.18)"
-              />
-              <path
-                d="M100,0 L70,0 C46,45 42,95 62,135 C80,170 80,190 68,215 C54,240 42,260 36,275 C24,310 40,345 56,380 C65,410 65,430 56,455 C44,480 32,510 30,530 C26,555 48,580 70,600 L100,600 Z"
-                fill="rgba(255,255,255,0.38)"
-              />
-              <path
-                d="M100,0 L82,0 C58,45 54,95 74,135 C90,170 90,190 78,215 C64,240 54,260 48,275 C36,310 52,345 68,380 C80,410 80,430 70,455 C58,480 46,510 44,530 C40,555 60,580 82,600 L100,600 Z"
-                fill="rgba(255,255,255,0.72)"
-              />
-              <path
-                d="M100,0 L92,0 C70,45 66,95 84,135 C95,165 95,185 86,210 C74,238 66,255 60,275 C48,310 64,345 80,380 C93,410 93,430 82,455 C70,480 60,510 58,530 C54,555 72,580 92,600 L100,600 Z"
-                className="fill-[#fafbfc] dark:fill-slate-900"
-              />
-            </svg>
-          </div>
-        </div>
-
-        {/* ── Right Form Panel (Desktop SaaS Layout) ─────────────────────────── */}
-        <div className="relative w-[56%] lg:w-[58%] h-full bg-[#fafbfc] dark:bg-slate-900 p-14 lg:p-20 flex items-center justify-center flex-1">
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4 }}
-            className="max-w-md w-full mx-auto relative z-10"
-          >
-            {/* Header */}
-            <div className="mb-8">
-              <h2 className="text-3xl lg:text-4xl font-bold text-slate-900 dark:text-white tracking-tight">
-                Welcome back
-              </h2>
-              <p className="text-slate-500 dark:text-slate-400 text-sm mt-2">
-                Please enter your details to sign in.
-              </p>
-            </div>
-
-            {/* Form */}
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-              {/* Email Field */}
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="desktop-email"
-                  className="block text-sm font-medium text-slate-700 dark:text-slate-300"
-                >
-                  Email
-                </label>
-                <input
-                  id="desktop-email"
-                  type="email"
-                  placeholder="Enter your email"
-                  {...register('email')}
-                  autoComplete="email"
-                  className={`w-full rounded-xl border px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 bg-white dark:bg-slate-800 transition-colors focus:outline-none focus:ring-2 ${
-                    errors.email
-                      ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20'
-                      : 'border-slate-300 dark:border-slate-700 focus:border-blue-600 focus:ring-blue-600/20'
-                  }`}
-                />
-                {errors.email && (
-                  <p className="text-xs text-red-500 mt-1">{errors.email.message}</p>
-                )}
-              </div>
-
-              {/* Password Field */}
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="desktop-password"
-                  className="block text-sm font-medium text-slate-700 dark:text-slate-300"
-                >
-                  Password
-                </label>
-                <div className="relative">
-                  <input
-                    id="desktop-password"
-                    type={showPassword ? 'text' : 'password'}
-                    placeholder="••••••••"
-                    {...register('password')}
-                    autoComplete="current-password"
-                    className={`w-full rounded-xl border px-3.5 py-2.5 pr-10 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 bg-white dark:bg-slate-800 transition-colors focus:outline-none focus:ring-2 ${
-                      errors.password
-                        ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20'
-                        : 'border-slate-300 dark:border-slate-700 focus:border-blue-600 focus:ring-blue-600/20'
-                    }`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors focus:outline-none"
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
+          {/* Trust icons */}
+          <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} transition={{ delay:0.6 }}
+            className="mt-8 pt-6 flex items-center justify-between"
+            style={{ borderTop:'1px solid rgba(255,255,255,0.05)' }}>
+            {[
+              { icon:ShieldCheck, label:'End-to-end secure' },
+              { icon:Zap,         label:'Real-time sync'    },
+              { icon:QrCode,      label:'QR + Biometric'    },
+            ].map(({ icon:Icon, label }) => (
+              <div key={label} className="flex flex-col items-center gap-1.5">
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center"
+                  style={{ background:'rgba(139,92,246,0.11)',border:'1px solid rgba(139,92,246,0.18)' }}>
+                  <Icon style={{ width:14,height:14,color:'#a78bfa' }} aria-hidden="true" />
                 </div>
-                {errors.password && (
-                  <p className="text-xs text-red-500 mt-1">{errors.password.message}</p>
-                )}
+                <span className="text-[9px]" style={{ color:'rgba(255,255,255,0.22)' }}>{label}</span>
               </div>
-
-              {/* Remember Me & Forgot Password Row */}
-              <div className="flex items-center justify-between pt-1">
-                <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-600 dark:text-slate-300 select-none">
-                  <input
-                    type="checkbox"
-                    checked={rememberMe}
-                    onChange={(e) => setRememberMe(e.target.checked)}
-                    className="w-4 h-4 rounded text-blue-600 border-slate-300 dark:border-slate-600 focus:ring-blue-500 cursor-pointer accent-blue-600"
-                  />
-                  <span>Remember for 30 days</span>
-                </label>
-
-                <Link
-                  to="/forgot-password"
-                  className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 hover:underline transition-colors"
-                >
-                  Forgot password?
-                </Link>
-              </div>
-
-              {/* Submit Button */}
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 px-4 shadow-sm hover:shadow transition-all text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Signing in...</span>
-                  </>
-                ) : (
-                  <span>Sign in</span>
-                )}
-              </button>
-            </form>
-
-            {/* Quick Demo Fill Buttons on Desktop */}
-            <div className="mt-6 pt-5 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
-              <span className="text-xs text-slate-400">Demo fill:</span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => fillDemoRole('student')}
-                  className="text-xs px-2.5 py-1 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-400 font-medium transition-colors cursor-pointer"
-                >
-                  Student
-                </button>
-                <button
-                  type="button"
-                  onClick={() => fillDemoRole('teacher')}
-                  className="text-xs px-2.5 py-1 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-400 font-medium transition-colors cursor-pointer"
-                >
-                  Teacher
-                </button>
-                <button
-                  type="button"
-                  onClick={() => fillDemoRole('admin')}
-                  className="text-xs px-2.5 py-1 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-950/40 dark:text-red-400 font-medium transition-colors cursor-pointer"
-                >
-                  Admin
-                </button>
-              </div>
-            </div>
-
-            {/* Footer Sign Up Link */}
-            <p className="text-center text-sm text-slate-500 dark:text-slate-400 mt-6">
-              Don't have an account?{' '}
-              <Link
-                to="/register"
-                className="text-blue-600 dark:text-blue-400 font-semibold hover:underline"
-              >
-                Sign up
-              </Link>
-            </p>
+            ))}
           </motion.div>
-        </div>
+
+        </motion.div>
       </div>
     </div>
   )
