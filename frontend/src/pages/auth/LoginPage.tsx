@@ -173,8 +173,8 @@ export default function LoginPage() {
           {/* 1. Username Pill Input */}
           <div className="space-y-0.5">
             <div className="relative flex items-center">
-              <div className="absolute left-4.5 pointer-events-none text-slate-500">
-                <UserIcon className="w-4 h-4 fill-slate-500 text-slate-500" />
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 flex items-center justify-center">
+                <UserIcon className="w-4 h-4 text-slate-400" />
               </div>
               <input
                 id="username"
@@ -182,7 +182,7 @@ export default function LoginPage() {
                 placeholder="Username"
                 {...register('username')}
                 autoComplete="username"
-                className="w-full rounded-full border border-slate-300/80 bg-white py-2.5 sm:py-3 pl-12 pr-4 text-sm text-slate-800 placeholder:text-slate-400 shadow-sm transition-all focus:outline-none focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
+                className="w-full rounded-full border border-slate-300/80 bg-white py-2.5 sm:py-3 pl-11 pr-4 text-sm text-slate-800 placeholder:text-slate-400 shadow-sm transition-all focus:outline-none focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
               />
             </div>
           </div>
@@ -190,8 +190,8 @@ export default function LoginPage() {
           {/* 2. Email Pill Input */}
           <div className="space-y-0.5">
             <div className="relative flex items-center">
-              <div className="absolute left-4.5 pointer-events-none text-slate-500">
-                <Mail className="w-4 h-4 text-slate-500" />
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 flex items-center justify-center">
+                <Mail className="w-4 h-4 text-slate-400" />
               </div>
               <input
                 id="email"
@@ -199,7 +199,7 @@ export default function LoginPage() {
                 placeholder="Email"
                 {...register('email')}
                 autoComplete="email"
-                className={`w-full rounded-full border bg-white py-2.5 sm:py-3 pl-12 pr-4 text-sm text-slate-800 placeholder:text-slate-400 shadow-sm transition-all focus:outline-none focus:ring-2 ${
+                className={`w-full rounded-full border bg-white py-2.5 sm:py-3 pl-11 pr-4 text-sm text-slate-800 placeholder:text-slate-400 shadow-sm transition-all focus:outline-none focus:ring-2 ${
                   errors.email
                     ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20'
                     : 'border-slate-300/80 focus:border-[#2563eb] focus:ring-[#2563eb]/20'
@@ -214,8 +214,8 @@ export default function LoginPage() {
           {/* 3. Password Pill Input with Visibility Toggle */}
           <div className="space-y-0.5">
             <div className="relative flex items-center">
-              <div className="absolute left-4.5 pointer-events-none text-slate-500">
-                <Shield className="w-4 h-4 text-slate-500" />
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 flex items-center justify-center">
+                <Shield className="w-4 h-4 text-slate-400" />
               </div>
               <input
                 id="password"
@@ -223,7 +223,7 @@ export default function LoginPage() {
                 placeholder="Password"
                 {...register('password')}
                 autoComplete="current-password"
-                className={`w-full rounded-full border bg-white py-2.5 sm:py-3 pl-12 pr-11 text-sm text-slate-800 placeholder:text-slate-400 shadow-sm transition-all focus:outline-none focus:ring-2 ${
+                className={`w-full rounded-full border bg-white py-2.5 sm:py-3 pl-11 pr-11 text-sm text-slate-800 placeholder:text-slate-400 shadow-sm transition-all focus:outline-none focus:ring-2 ${
                   errors.password
                     ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20'
                     : 'border-slate-300/80 focus:border-[#2563eb] focus:ring-[#2563eb]/20'
@@ -233,7 +233,7 @@ export default function LoginPage() {
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
-                className="absolute right-4 text-slate-400 hover:text-slate-600 focus:outline-none transition-colors"
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none transition-colors p-1"
               >
                 {showPassword ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
               </button>
