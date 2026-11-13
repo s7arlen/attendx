@@ -51,7 +51,11 @@ export default function SubjectsPage() {
   })
 
   const createMutation = useMutation({
-    mutationFn: (d: SubjectForm) => adminService.createSubject({ ...d, year: parseInt(d.year), credits: d.credits ? parseInt(d.credits) : 3 }),
+    mutationFn: (d: SubjectForm) => adminService.createSubject({
+      ...d,
+      year: parseInt(d.year),
+      credits: (d.credits !== undefined && d.credits !== '') ? parseInt(d.credits) : 3,
+    }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin-subjects'] }); toast({ title: 'Subject created', variant: 'success' }); setDialogOpen(false); reset() },
     onError: (err) => {
       const error = err as ApiError;
@@ -60,7 +64,11 @@ export default function SubjectsPage() {
   })
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: SubjectForm }) => adminService.updateSubject(id, { ...data, year: parseInt(data.year), credits: data.credits ? parseInt(data.credits) : 3 }),
+    mutationFn: ({ id, data }: { id: string; data: SubjectForm }) => adminService.updateSubject(id, {
+      ...data,
+      year: parseInt(data.year),
+      credits: (data.credits !== undefined && data.credits !== '') ? parseInt(data.credits) : 3,
+    }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin-subjects'] }); toast({ title: 'Subject updated', variant: 'success' }); setDialogOpen(false) },
     onError: (err) => {
       const error = err as ApiError;

@@ -23,7 +23,7 @@ const SubjectSchema = new Schema<ISubject>(
     department: { type: String, required: true, trim: true },
     year: { type: Number, required: true, min: 1, max: 4 },
     section: { type: String, required: true, trim: true },
-    credits: { type: Number, default: 3, min: 1, max: 6 },
+    credits: { type: Number, default: 3, min: 0, max: 6 },
     description: { type: String, trim: true },
     isActive: { type: Boolean, default: true },
   },

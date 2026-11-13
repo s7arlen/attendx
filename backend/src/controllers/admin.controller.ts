@@ -31,7 +31,7 @@ const createSubjectSchema = z.object({
   department: z.string().min(2),
   year: z.number().int().min(1).max(4),
   section: z.string(),
-  credits: z.number().int().min(1).max(6).optional(),
+  credits: z.number().int().min(0).max(6).optional(),
   description: z.string().optional(),
 });
 
