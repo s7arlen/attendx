@@ -81,7 +81,7 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode;
 
 function RootRedirect() {
   const { isAuthenticated, user } = useAuthStore()
-  if (!isAuthenticated) return <Navigate to="/welcome" replace />
+  if (!isAuthenticated) return <Navigate to="/login" replace />
   if (user?.role === 'admin') return <Navigate to="/len-admin" replace />
   if (user?.role === 'security') return <Navigate to="/visitor/gate" replace />
   return <Navigate to={`/${user?.role}`} replace />
