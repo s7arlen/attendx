@@ -1,4 +1,4 @@
-import { AlertTriangle, RefreshCw } from 'lucide-react'
+import { AlertTriangle, RefreshCw, BarChart3 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 interface ErrorStateProps {
@@ -28,11 +28,14 @@ export default function ErrorState({ message = 'Failed to load data.', onRetry }
 }
 
 /** Inline chart empty state — shows inside a chart card when data is empty */
-export function ChartEmpty({ label = 'No data yet' }: { label?: string }) {
+export function ChartEmpty({ label = 'No data yet', sublabel }: { label?: string; sublabel?: string }) {
   return (
-    <div className="flex flex-col items-center justify-center h-full min-h-[180px] gap-2 text-muted-foreground">
-      <AlertTriangle className="w-8 h-8 opacity-20" aria-hidden="true" />
-      <p className="text-sm">{label}</p>
+    <div className="flex flex-col items-center justify-center h-full min-h-[190px] gap-2 text-muted-foreground py-6">
+      <div className="w-10 h-10 rounded-xl bg-muted/40 border border-border/50 flex items-center justify-center">
+        <BarChart3 className="w-5 h-5 text-muted-foreground/50" aria-hidden="true" />
+      </div>
+      <p className="text-xs font-medium text-foreground/80">{label}</p>
+      {sublabel && <p className="text-[11px] text-muted-foreground/70 max-w-xs text-center">{sublabel}</p>}
     </div>
   )
 }

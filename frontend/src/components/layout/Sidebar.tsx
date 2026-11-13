@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -6,6 +7,7 @@ import {
   ShieldCheck, LogOut, UserCheck, Clock, UserCircle,
   Shield, AlertTriangle, Building2, CalendarDays,
   UserPlus, ClipboardCheck, QrCode as QrCodeIcon, LogIn, BarChart2,
+  ChevronDown,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/authStore'
@@ -28,19 +30,20 @@ const adminNavItems: NavItem[] = [
   { label: 'Reports',    icon: History,          path: '/len-admin/reports' },
   { label: 'Disputes',   icon: AlertTriangle,    path: '/len-admin/disputes' },
   { label: 'Audit Logs', icon: Shield,           path: '/len-admin/audit-logs' },
-  // Visitor Management
-  { label: 'VISITOR MANAGEMENT', isHeader: true },
-  { label: 'Visitor Dashboard',   icon: LayoutDashboard, path: '/visitor',          group: 'visitor' },
-  { label: 'All Visits',          icon: Users,           path: '/visitor/visits',   group: 'visitor' },
-  { label: 'Register Visitor',    icon: UserPlus,        path: '/visitor/register', group: 'visitor' },
-  { label: 'Approvals',           icon: ClipboardCheck,  path: '/visitor/approvals',group: 'visitor' },
-  { label: 'QR Passes',           icon: QrCodeIcon,      path: '/visitor/passes',   group: 'visitor' },
-  { label: 'Gate Scanner',        icon: ScanLine,        path: '/visitor/gate',     group: 'visitor' },
-  { label: 'Currently Inside',    icon: UserCheck,       path: '/visitor/inside',   group: 'visitor' },
-  { label: 'Entry/Exit History',  icon: History,         path: '/visitor/history',  group: 'visitor' },
-  { label: 'Visitor Analytics',   icon: BarChart2,       path: '/visitor/analytics',group: 'visitor' },
-  { label: 'Events',              icon: CalendarDays,    path: '/visitor/events',   group: 'visitor' },
   { label: 'Profile',    icon: UserCircle,       path: '/len-admin/profile' },
+]
+
+const visitorSubItems: NavItem[] = [
+  { label: 'Visitor Dashboard',  icon: LayoutDashboard, path: '/visitor' },
+  { label: 'All Visits',         icon: Users,           path: '/visitor/visits' },
+  { label: 'Register Visitor',   icon: UserPlus,        path: '/visitor/register' },
+  { label: 'Approvals',          icon: ClipboardCheck,  path: '/visitor/approvals' },
+  { label: 'QR Passes',          icon: QrCodeIcon,      path: '/visitor/passes' },
+  { label: 'Gate Scanner',       icon: ScanLine,        path: '/visitor/gate' },
+  { label: 'Currently Inside',   icon: UserCheck,       path: '/visitor/inside' },
+  { label: 'Entry/Exit History', icon: History,         path: '/visitor/history' },
+  { label: 'Visitor Analytics',  icon: BarChart2,       path: '/visitor/analytics' },
+  { label: 'Events',             icon: CalendarDays,    path: '/visitor/events' },
 ]
 
 const teacherNavItems: NavItem[] = [
@@ -78,20 +81,6 @@ const studentNavItems: NavItem[] = [
 // Root paths — dashboard item should only be active on exact match
 const dashboardPaths = new Set(['/len-admin', '/teacher', '/student'])
 
-const roleGradients: Record<string, string> = {
-  admin:    'from-red-500 to-orange-500',
-  teacher:  'from-blue-500 to-indigo-600',
-  student:  'from-emerald-500 to-teal-600',
-  security: 'from-slate-500 to-slate-700',
-}
-
-const roleIcons: Record<string, React.ElementType> = {
-  admin:    ShieldCheck,
-  teacher:  Users,
-  student:  GraduationCap,
-  security: Shield,
-}
-
 interface SidebarProps {
   collapsed: boolean
   onToggle: () => void
@@ -100,15 +89,14 @@ interface SidebarProps {
 export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const location = useLocation()
   const { user, logout } = useAuthStore()
+  const isVisitorRoute = location.pathname.startsWith('/visitor')
+  const [visitorOpen, setVisitorOpen] = useState(isVisitorRoute)
 
   const navItems =
     user?.role === 'admin'    ? adminNavItems    :
     user?.role === 'teacher'  ? teacherNavItems  :
     user?.role === 'security' ? securityNavItems :
     studentNavItems
-
-  const RoleIcon = roleIcons[user?.role || 'student']
-  const roleGradient = roleGradients[user?.role || 'student']
 
   return (
     // Wrapper — overflow-visible so the toggle button can poke outside
@@ -123,7 +111,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
           'flex items-center h-16 border-b border-border flex-shrink-0 transition-all duration-250',
           collapsed ? 'px-0 justify-center' : 'px-4 gap-3'
         )}>
-          <div className="flex-shrink-0 w-9 h-9 rounded-xl gradient-bg flex items-center justify-center shadow-lg">
+          <div className="flex-shrink-0 w-9 h-9 rounded-xl gradient-bg flex items-center justify-center shadow-md">
             <QrCode className="w-5 h-5 text-white" />
           </div>
           <AnimatePresence initial={false}>
@@ -140,38 +128,6 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
-
-        {/* ── User badge ── */}
-        <div className={cn(
-          'border-b border-border flex-shrink-0 transition-all duration-250',
-          collapsed ? 'px-0 py-3 flex justify-center' : 'px-3 py-3'
-        )}>
-          {collapsed ? (
-            // Collapsed: just the role icon as a small circle
-            <div className={cn(
-              'w-9 h-9 rounded-xl flex items-center justify-center bg-gradient-to-br',
-              roleGradient
-            )}>
-              <RoleIcon className="w-4 h-4 text-white" />
-            </div>
-          ) : (
-            <motion.div
-              key="user-badge"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className={cn(
-                'flex items-center gap-2.5 bg-gradient-to-r p-2.5 rounded-xl',
-                roleGradient
-              )}
-            >
-              <RoleIcon className="w-4 h-4 text-white flex-shrink-0" />
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-white truncate leading-tight">{user?.name}</p>
-                <p className="text-[10px] text-white/70 capitalize">{user?.role}</p>
-              </div>
-            </motion.div>
-          )}
         </div>
 
         {/* ── Nav ── */}
@@ -229,6 +185,71 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
               </Link>
             )
           })}
+
+          {/* ── Collapsible Visitor Management Section for Admin ── */}
+          {user?.role === 'admin' && (
+            <div className="pt-2">
+              <div className="px-2 py-1">
+                <div className="border-t border-border/60" />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setVisitorOpen(!visitorOpen)}
+                title="Visitor Management"
+                className={cn(
+                  'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-150 cursor-pointer text-muted-foreground hover:bg-accent hover:text-foreground',
+                  isVisitorRoute && 'bg-primary/5 text-primary font-medium',
+                  collapsed && 'justify-center px-0'
+                )}
+              >
+                <Building2 className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
+                {!collapsed && (
+                  <>
+                    <span className="text-sm flex-1 text-left truncate">Visitor Desk</span>
+                    <ChevronDown
+                      className={cn(
+                        'w-4 h-4 transition-transform duration-200 opacity-60',
+                        visitorOpen && 'transform rotate-180'
+                      )}
+                    />
+                  </>
+                )}
+              </button>
+
+              <AnimatePresence initial={false}>
+                {!collapsed && visitorOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="pl-4 pr-1 space-y-0.5 pt-1 overflow-hidden"
+                  >
+                    {visitorSubItems.map((vItem) => {
+                      const VIcon = vItem.icon!
+                      const isVActive = location.pathname === vItem.path
+                      return (
+                        <Link key={vItem.path} to={vItem.path!}>
+                          <div
+                            className={cn(
+                              'flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer',
+                              isVActive
+                                ? 'bg-primary/10 text-primary font-medium'
+                                : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                            )}
+                          >
+                            <VIcon className="w-3.5 h-3.5 flex-shrink-0" />
+                            <span className="truncate">{vItem.label}</span>
+                          </div>
+                        </Link>
+                      )
+                    })}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
         </nav>
 
         {/* ── Logout ── */}
