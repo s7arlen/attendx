@@ -22,6 +22,10 @@ import { errorHandler } from './middleware/errorHandler';
 dotenv.config();
 
 const app = express();
+
+// Trust Render/proxy headers so rate limiter can identify real client IPs
+app.set('trust proxy', 1);
+
 const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
