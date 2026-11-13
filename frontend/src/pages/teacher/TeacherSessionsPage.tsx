@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
-  Play, Square, Users, Clock, Hash, QrCode,
+  Play, Users, Clock, QrCode, Hash,
   X, RefreshCw, AlertCircle, FileText,
+  Maximize2, Minimize2, Copy, Check,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -33,6 +34,11 @@ function LiveSessionModal({ session, onEnd, ending, onClose }: LiveSessionModalP
   const [qrCodeData, setQrCodeData] = useState(session.qrCodeData)
   const [qrSecondsLeft, setQrSecondsLeft] = useState(QR_REFRESH_INTERVAL)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [isProjectorMode, setIsProjectorMode] = useState(false)
+  const [showRoster, setShowRoster] = useState(false)
+  const [copiedField, setCopiedField] = useState<'sessionCode' | 'passwordCode' | null>(null)
+  const [confirmEndOpen, setConfirmEndOpen] = useState(false)
+  const [rosterSearch, setRosterSearch] = useState('')
 
   // Session countdown
   useEffect(() => {
@@ -49,7 +55,6 @@ function LiveSessionModal({ session, onEnd, ending, onClose }: LiveSessionModalP
     try {
       const data = await attendanceService.refreshQR(session._id)
       setQrCodeData(data.qrCodeData)
-      // qrToken update is handled server-side; session token stays current
     } catch {
       // Silently ignore — will retry next tick
     } finally {
@@ -68,6 +73,23 @@ function LiveSessionModal({ session, onEnd, ending, onClose }: LiveSessionModalP
     }, 1000)
     return () => clearInterval(tick)
   }, [msLeft, session._id, doRefresh])
+
+  // Escape key handler for Projector Mode & dialog
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (confirmEndOpen) {
+          setConfirmEndOpen(false)
+        } else if (isProjectorMode) {
+          setIsProjectorMode(false)
+        } else {
+          onClose()
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isProjectorMode, confirmEndOpen, onClose])
 
   // Live attendee count — socket push, fall back to poll
   const [socketPresent, setSocketPresent] = useState<number | null>(null)
@@ -97,174 +119,366 @@ function LiveSessionModal({ session, onEnd, ending, onClose }: LiveSessionModalP
     ? (session.subjectId as { subjectCode?: string }).subjectCode || '' : ''
 
   const isExpired = msLeft <= 0
-  const timerColor = msLeft < 60_000 ? 'text-red-500'
-    : msLeft < 3 * 60_000 ? 'text-amber-500'
-    : 'text-emerald-500'
+  const sessionDurationMinutes = session.duration || 15
 
-  // SVG ring progress for QR refresh countdown
+  const handleCopy = (text: string, field: 'sessionCode' | 'passwordCode') => {
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(text)
+    }
+    setCopiedField(field)
+    toast({ title: 'Copied to clipboard', description: text })
+    setTimeout(() => setCopiedField(null), 2000)
+  }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="relative w-full max-w-2xl bg-card rounded-2xl shadow-2xl border border-border overflow-hidden">
+  const attendanceRecords = (liveData?.attendanceRecords as any[]) || []
+  const filteredRecords = attendanceRecords.filter((rec: any) => {
+    if (!rosterSearch) return true
+    const student = typeof rec.studentId === 'object' ? rec.studentId : null
+    const name = student?.name || ''
+    const roll = student?.rollNumber || student?.email || ''
+    const query = rosterSearch.toLowerCase()
+    return name.toLowerCase().includes(query) || roll.toLowerCase().includes(query)
+  })
 
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-border">
-          <div className="flex items-center gap-3">
-            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-            <div>
-              <h2 className="font-bold text-lg leading-tight">{subjectName}</h2>
-              <p className="text-xs text-muted-foreground font-mono">{subjectCode}</p>
-            </div>
+  // ── Projector View ─────────────────────────────────────────────────────────
+  if (isProjectorMode) {
+    return (
+      <div className="fixed inset-0 z-50 bg-background text-foreground flex flex-col justify-between p-8 sm:p-12 select-none overflow-y-auto overscroll-contain">
+        {/* Top */}
+        <div className="flex items-center justify-between border-b border-border/60 pb-6">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">{subjectName}</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">{subjectCode} · Attendance Session</p>
           </div>
-          <div className="flex items-center gap-2">
-            <Badge variant="success" className="gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              Live
-            </Badge>
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+          <div className="flex items-center gap-6">
+            <div className="text-right">
+              <span className={`text-3xl sm:text-4xl font-mono font-semibold tracking-tight ${msLeft < 60_000 ? 'text-destructive' : ''}`}>
+                {isExpired ? '00:00' : formatTimeRemaining(msLeft)}
+              </span>
+              <p className="text-xs text-muted-foreground">Remaining</p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsProjectorMode(false)}
+              className="gap-1.5"
             >
-              <X className="w-4 h-4" />
-            </button>
+              <Minimize2 className="w-3.5 h-3.5" />
+              Exit (Esc)
+            </Button>
           </div>
         </div>
 
-        {/* Body */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6">
-
-          {/* QR Code + refresh ring */}
+        {/* Center */}
+        <div className="my-auto py-10 flex flex-col lg:flex-row items-center justify-center gap-14 max-w-5xl mx-auto w-full">
           <div className="flex flex-col items-center gap-3">
-            <div className="relative">
-              {/* Refresh countdown ring */}
-              <svg
-                className="absolute -inset-3 w-[calc(100%+24px)] h-[calc(100%+24px)] -rotate-90"
-                viewBox="0 0 100 100"
-                style={{ left: '-12px', top: '-12px' }}
-              >
-                <circle
-                  cx="50" cy="50" r={46}
-                  fill="none"
-                  stroke="hsl(var(--border))"
-                  strokeWidth="2.5"
+            <div className="w-80 h-80 sm:w-96 sm:h-96 bg-white p-4 rounded-2xl border border-border shadow-lg flex items-center justify-center relative">
+              {qrCodeData ? (
+                <img
+                  src={qrCodeData}
+                  alt="Attendance QR Code"
+                  className={`w-full h-full object-contain ${isRefreshing ? 'opacity-40' : 'opacity-100'}`}
                 />
-                <circle
-                  cx="50" cy="50" r={46}
-                  fill="none"
-                  stroke="hsl(var(--primary))"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  style={{
-                    strokeDasharray: `${2 * Math.PI * 46}`,
-                    strokeDashoffset: `${2 * Math.PI * 46 * (qrSecondsLeft / QR_REFRESH_INTERVAL)}`,
-                    transition: 'stroke-dashoffset 1s linear',
-                  }}
-                />
-              </svg>
-
-              <div className="w-64 h-64 rounded-2xl overflow-hidden border-4 border-primary/20 shadow-lg bg-white p-2 relative">
-                {qrCodeData ? (
-                  <img
-                    src={qrCodeData}
-                    alt="Attendance QR Code"
-                    className={`w-full h-full object-contain transition-opacity duration-300 ${isRefreshing ? 'opacity-30' : 'opacity-100'}`}
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <QrCode className="w-20 h-20 text-muted-foreground/30" />
-                  </div>
-                )}
-                {isRefreshing && (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <RefreshCw className="w-8 h-8 text-primary animate-spin" />
-                  </div>
-                )}
-                {isExpired && (
-                  <div className="absolute inset-0 rounded-xl bg-black/60 flex items-center justify-center">
-                    <p className="text-white font-bold text-lg">Expired</p>
-                  </div>
-                )}
-              </div>
+              ) : (
+                <QrCode className="w-24 h-24 text-muted-foreground/30 animate-pulse" />
+              )}
+              {isRefreshing && (
+                <div className="absolute inset-0 flex items-center justify-center bg-white/70 rounded-2xl">
+                  <RefreshCw className="w-8 h-8 text-muted-foreground animate-spin" />
+                </div>
+              )}
             </div>
-
-            {/* Refresh info + manual refresh */}
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <RefreshCw className="w-3 h-3" />
-              <span>Refreshes in <span className="font-mono font-semibold text-foreground">{qrSecondsLeft}s</span></span>
-              <button
-                onClick={() => { doRefresh(); setQrSecondsLeft(QR_REFRESH_INTERVAL) }}
-                className="ml-1 text-primary hover:underline disabled:opacity-50"
-                disabled={isRefreshing || isExpired}
-              >
-                Refresh now
-              </button>
-            </div>
-
-            <p className="text-xs text-muted-foreground text-center">
-              Students scan this QR code — it changes every {QR_REFRESH_INTERVAL}s
-            </p>
+            <p className="text-xs text-muted-foreground">Refreshes every {QR_REFRESH_INTERVAL}s</p>
           </div>
 
-          {/* Session details */}
-          <div className="flex flex-col gap-3">
-
-            {/* Timer */}
-            <div className="rounded-xl border border-border bg-muted/30 p-4 text-center">
-              <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Time Remaining</p>
-              <p className={`text-4xl font-mono font-bold ${timerColor}`}>
-                {isExpired ? '0:00' : formatTimeRemaining(msLeft)}
-              </p>
+          <div className="space-y-6 max-w-sm w-full">
+            <div>
+              <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium mb-1">Session Code</p>
+              <p className="font-mono text-3xl font-bold tracking-wider select-all">{session.sessionCode}</p>
             </div>
-
-            {/* Session Code */}
-            <div className="rounded-xl border border-border bg-muted/30 p-4">
-              <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Session Code</p>
-              <p className="text-2xl font-mono font-bold tracking-widest text-primary">
-                {session.sessionCode}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">Students enter this code manually</p>
+            <div>
+              <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium mb-1">Passcode</p>
+              <p className="font-mono text-3xl font-bold tracking-wider select-all">{session.passwordCode}</p>
             </div>
-
-            {/* Password */}
-            <div className="rounded-xl border border-border bg-muted/30 p-4">
-              <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
-                Verification Password
-              </p>
-              <p className="text-2xl font-mono font-bold tracking-widest">
-                {session.passwordCode}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">Enter after scanning QR</p>
-            </div>
-
-            {/* Attendee count */}
-            <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-500/5 p-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center">
-                <Users className="w-5 h-5 text-emerald-500" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{totalPresent}</p>
-                <p className="text-xs text-muted-foreground">students present</p>
-              </div>
-              <RefreshCw className="w-3.5 h-3.5 text-muted-foreground ml-auto animate-spin opacity-40" />
+            <div className="pt-2 border-t border-border/60">
+              <p className="text-2xl font-semibold font-mono">{totalPresent}</p>
+              <p className="text-xs text-muted-foreground">Students checked in</p>
             </div>
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="px-6 pb-5 pt-2 border-t border-border flex items-center justify-between gap-4">
-          <p className="text-xs text-muted-foreground">
-            Expires at {new Date(session.expiryTime).toLocaleTimeString()}
-          </p>
+        {/* Bottom */}
+        <div className="flex items-center justify-between border-t border-border/60 pt-4 text-xs text-muted-foreground">
+          <span>Closes at {new Date(session.expiryTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
           <Button
-            variant="destructive"
-            className="gap-2"
-            loading={ending}
+            variant="outline"
+            size="sm"
             onClick={onEnd}
+            loading={ending}
+            className="text-xs text-muted-foreground hover:text-destructive"
           >
-            <Square className="w-4 h-4" />
             End Session
           </Button>
         </div>
+      </div>
+    )
+  }
+
+  // ── Standard Modal View ────────────────────────────────────────────────────
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overscroll-contain">
+      <div className="relative w-full max-w-2xl bg-card rounded-2xl shadow-xl border border-border overflow-hidden animate-in fade-in-0 zoom-in-98 duration-150">
+
+        {/* Clean Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border/60">
+          <div className="flex items-center gap-3">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+            <div>
+              <h2 className="font-semibold text-base sm:text-lg leading-tight text-foreground">{subjectName}</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">{subjectCode} · {sessionDurationMinutes} min session</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsProjectorMode(true)}
+              className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground gap-1.5"
+              title="Full screen presentation"
+            >
+              <Maximize2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Present</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={onClose}
+              className="text-muted-foreground hover:text-foreground"
+              aria-label="Close"
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Modal Body */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-6">
+
+          {/* Left Column: Pure QR Code */}
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-full aspect-square max-w-[260px] bg-white p-3 rounded-xl border border-border shadow-xs flex items-center justify-center relative">
+              {qrCodeData ? (
+                <img
+                  src={qrCodeData}
+                  alt="Attendance QR Code"
+                  className={`w-full h-full object-contain transition-opacity duration-200 ${isRefreshing ? 'opacity-40' : 'opacity-100'}`}
+                />
+              ) : (
+                <QrCode className="w-16 h-16 text-muted-foreground/30 animate-pulse" />
+              )}
+              {isRefreshing && (
+                <div className="absolute inset-0 flex items-center justify-center bg-white/70 rounded-xl">
+                  <RefreshCw className="w-6 h-6 text-muted-foreground animate-spin" />
+                </div>
+              )}
+              {isExpired && (
+                <div className="absolute inset-0 rounded-xl bg-background/80 backdrop-blur-xs flex items-center justify-center">
+                  <span className="font-medium text-sm text-foreground">Session expired</span>
+                </div>
+              )}
+            </div>
+
+            {/* Minimal refresh info */}
+            <div className="flex items-center justify-between w-full max-w-[260px] text-xs text-muted-foreground px-0.5">
+              <span>Auto-refreshes in {qrSecondsLeft}s</span>
+              <button
+                onClick={() => { doRefresh(); setQrSecondsLeft(QR_REFRESH_INTERVAL) }}
+                disabled={isRefreshing || isExpired}
+                className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors disabled:opacity-50"
+              >
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          {/* Right Column: Natural Information Hierarchy */}
+          <div className="flex flex-col justify-between">
+            {!showRoster ? (
+              <div className="space-y-4">
+                {/* Timer */}
+                <div>
+                  <div className="flex items-baseline justify-between">
+                    <span className={`text-3xl sm:text-4xl font-semibold font-mono tracking-tight text-foreground ${msLeft < 60_000 ? 'text-destructive' : ''}`}>
+                      {isExpired ? '00:00' : formatTimeRemaining(msLeft)}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      Ends at {new Date(session.expiryTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">Time remaining</p>
+                </div>
+
+                <div className="h-px bg-border/60" />
+
+                {/* Manual Entry Codes (Full width rows so codes never wrap) */}
+                <div className="space-y-2.5">
+                  <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                    Manual Entry
+                  </span>
+
+                  {/* Session Code */}
+                  <div className="flex items-center justify-between p-2.5 rounded-lg border border-border/70 bg-muted/30">
+                    <div>
+                      <span className="text-[10px] text-muted-foreground uppercase block font-medium">Session Code</span>
+                      <span className="font-mono text-base font-semibold tracking-wider text-foreground select-all">
+                        {session.sessionCode}
+                      </span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleCopy(session.sessionCode, 'sessionCode')}
+                      className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground gap-1"
+                    >
+                      {copiedField === 'sessionCode' ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedField === 'sessionCode' ? 'Copied' : 'Copy'}</span>
+                    </Button>
+                  </div>
+
+                  {/* Passcode */}
+                  <div className="flex items-center justify-between p-2.5 rounded-lg border border-border/70 bg-muted/30">
+                    <div>
+                      <span className="text-[10px] text-muted-foreground uppercase block font-medium">Passcode</span>
+                      <span className="font-mono text-base font-semibold tracking-wider text-foreground select-all">
+                        {session.passwordCode}
+                      </span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleCopy(session.passwordCode, 'passwordCode')}
+                      className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground gap-1"
+                    >
+                      {copiedField === 'passwordCode' ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedField === 'passwordCode' ? 'Copied' : 'Copy'}</span>
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="h-px bg-border/60" />
+
+                {/* Attendees counter */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <span className="text-sm font-medium text-foreground">
+                      {totalPresent} {totalPresent === 1 ? 'student' : 'students'} present
+                    </span>
+                  </div>
+                  {attendanceRecords.length > 0 && (
+                    <button
+                      onClick={() => setShowRoster(true)}
+                      className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+                    >
+                      View list
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              /* Attendees List View */
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Attendees ({totalPresent})
+                  </span>
+                  <button
+                    onClick={() => setShowRoster(false)}
+                    className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+                  >
+                    Back to codes
+                  </button>
+                </div>
+
+                {attendanceRecords.length > 4 && (
+                  <input
+                    type="text"
+                    placeholder="Search student..."
+                    value={rosterSearch}
+                    onChange={(e) => setRosterSearch(e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-xs rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                  />
+                )}
+
+                <div className="max-h-52 overflow-y-auto divide-y divide-border/50 pr-1">
+                  {filteredRecords.length > 0 ? (
+                    filteredRecords.map((record: any, index: number) => {
+                      const student = typeof record.studentId === 'object' ? record.studentId : null
+                      const name = student?.name || `Student ${index + 1}`
+                      const roll = student?.rollNumber || student?.email || ''
+                      const time = new Date(record.timestamp || record.createdAt).toLocaleTimeString([], {
+                        hour: '2-digit', minute: '2-digit'
+                      })
+                      return (
+                        <div key={record._id || index} className="py-2 flex items-center justify-between text-xs">
+                          <div>
+                            <p className="font-medium text-foreground">{name}</p>
+                            <p className="text-[11px] text-muted-foreground font-mono">{roll}</p>
+                          </div>
+                          <span className="text-[11px] text-muted-foreground font-mono">{time}</span>
+                        </div>
+                      )
+                    })
+                  ) : (
+                    <p className="text-xs text-muted-foreground text-center py-6">No students found</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Clean Footer */}
+        <div className="px-6 py-3.5 border-t border-border/60 flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">
+            Expires at {new Date(session.expiryTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </span>
+
+          {confirmEndOpen ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">End this session?</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setConfirmEndOpen(false)}
+                disabled={ending}
+                className="h-8 text-xs"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                loading={ending}
+                onClick={onEnd}
+                className="h-8 text-xs"
+              >
+                End Session
+              </Button>
+            </div>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setConfirmEndOpen(true)}
+              className="h-8 text-xs text-muted-foreground hover:text-destructive hover:border-destructive/50 transition-colors"
+            >
+              End Session
+            </Button>
+          )}
+        </div>
+
       </div>
     </div>
   )
