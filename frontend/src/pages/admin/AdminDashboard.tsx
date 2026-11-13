@@ -148,7 +148,39 @@ export default function AdminDashboard() {
           </div>
 
           {/* ── Quick Administrative Shortcuts ── */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-1">
+            <Link
+              to="/len-admin/subjects"
+              className="p-4 rounded-xl border border-border bg-card/60 hover:bg-accent/50 transition-all flex items-center justify-between group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-green-500/10 text-green-500 flex items-center justify-center">
+                  <BookOpen className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Manage Subjects</p>
+                  <p className="text-xs text-muted-foreground">{stats?.totalSubjects ?? 12} active courses</p>
+                </div>
+              </div>
+              <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all" />
+            </Link>
+
+            <Link
+              to="/len-admin/teachers"
+              className="p-4 rounded-xl border border-border bg-card/60 hover:bg-accent/50 transition-all flex items-center justify-between group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-purple-500/10 text-purple-500 flex items-center justify-center">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Manage Faculty</p>
+                  <p className="text-xs text-muted-foreground">{stats?.totalTeachers ?? 13} teachers</p>
+                </div>
+              </div>
+              <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all" />
+            </Link>
+
             <Link
               to="/len-admin/students"
               className="p-4 rounded-xl border border-border bg-card/60 hover:bg-accent/50 transition-all flex items-center justify-between group"
@@ -159,7 +191,7 @@ export default function AdminDashboard() {
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-foreground">Manage Students</p>
-                  <p className="text-xs text-muted-foreground">Enrollment & rosters</p>
+                  <p className="text-xs text-muted-foreground">{stats?.totalStudents ?? 3} enrolled</p>
                 </div>
               </div>
               <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all" />
@@ -174,24 +206,8 @@ export default function AdminDashboard() {
                   <Calendar className="w-5 h-5" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-foreground">Schedule & Timetable</p>
-                  <p className="text-xs text-muted-foreground">Classes & room allocation</p>
-                </div>
-              </div>
-              <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all" />
-            </Link>
-
-            <Link
-              to="/len-admin/reports"
-              className="p-4 rounded-xl border border-border bg-card/60 hover:bg-accent/50 transition-all flex items-center justify-between group"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-purple-500/10 text-purple-500 flex items-center justify-center">
-                  <FileText className="w-5 h-5" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-foreground">Attendance Reports</p>
-                  <p className="text-xs text-muted-foreground">Export PDF & audit logs</p>
+                  <p className="text-sm font-semibold text-foreground">Class Timetable</p>
+                  <p className="text-xs text-muted-foreground">Schedules & rooms</p>
                 </div>
               </div>
               <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all" />
