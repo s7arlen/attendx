@@ -85,7 +85,7 @@ export default function LoginPage() {
   const fillDemoRole = (role: 'admin' | 'teacher' | 'student') => {
     const creds = {
       admin: { username: 'admin', email: 'admin@attendx.com', password: 'Admin@123' },
-      teacher: { username: 'teacher', email: 'teacher@attendx.com', password: 'Teacher@123' },
+      teacher: { username: 'teacher1', email: 'teacher1@attendx.com', password: 'Teacher@123' },
       student: { username: 'student1', email: 'student1@attendx.com', password: 'Student@123' },
     }
     setValue('username', creds[role].username)
