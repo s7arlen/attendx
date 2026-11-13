@@ -74,6 +74,14 @@ export default function LoginPage() {
     }
   }
 
+  const handleSocialLogin = (provider: 'Google' | 'Apple' | 'GitHub') => {
+    toast({
+      title: `${provider} Login`,
+      description: `${provider} authentication is coming soon. Please use email/password to sign in.`,
+      variant: 'default',
+    })
+  }
+
   const fillDemoRole = (role: 'admin' | 'teacher' | 'student') => {
     const creds = {
       admin: { username: 'admin', email: 'admin@attendx.com', password: 'Admin@123' },
@@ -276,36 +284,61 @@ export default function LoginPage() {
             </span>
           </div>
 
-          {/* 3 Glossy Colored Rounded Square Buttons (Admin, Teacher, Student) */}
-          <div className="flex items-center justify-center gap-4 pt-0.5">
-            {/* Red Square - Admin */}
+          {/* 3 Social Media Login Buttons (Google, Apple, GitHub) */}
+          <div className="flex items-center justify-center gap-3.5 pt-0.5">
+            {/* Google */}
             <button
               type="button"
-              onClick={() => fillDemoRole('admin')}
-              title="Demo Admin: admin@attendx.com"
-              className="w-11 h-11 rounded-2xl bg-gradient-to-b from-[#ff2a38] to-[#db061b] hover:brightness-105 active:scale-90 transition-transform shadow-md shadow-red-500/25 relative overflow-hidden cursor-pointer flex items-center justify-center"
+              onClick={() => handleSocialLogin('Google')}
+              title="Continue with Google"
+              className="w-11 h-11 rounded-2xl bg-white border border-slate-200/90 hover:border-slate-300 hover:bg-slate-50/80 active:scale-95 transition-all shadow-sm flex items-center justify-center cursor-pointer group"
             >
-              <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/10 to-white/30 pointer-events-none" />
+              <svg className="w-5 h-5 transition-transform group-hover:scale-105" viewBox="0 0 24 24">
+                <path
+                  fill="#4285F4"
+                  d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
+                />
+              </svg>
             </button>
 
-            {/* Yellow/Orange Square - Teacher */}
+            {/* Apple */}
             <button
               type="button"
-              onClick={() => fillDemoRole('teacher')}
-              title="Demo Teacher: teacher@attendx.com"
-              className="w-11 h-11 rounded-2xl bg-gradient-to-b from-[#ffb400] to-[#e69b00] hover:brightness-105 active:scale-90 transition-transform shadow-md shadow-amber-500/25 relative overflow-hidden cursor-pointer flex items-center justify-center"
+              onClick={() => handleSocialLogin('Apple')}
+              title="Continue with Apple"
+              className="w-11 h-11 rounded-2xl bg-white border border-slate-200/90 hover:border-slate-300 hover:bg-slate-50/80 active:scale-95 transition-all shadow-sm flex items-center justify-center cursor-pointer group"
             >
-              <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/10 to-white/30 pointer-events-none" />
+              <svg className="w-5 h-5 fill-slate-900 transition-transform group-hover:scale-105" viewBox="0 0 24 24">
+                <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 7.05c.66-.82 1.11-1.95 1-3.05-.98.04-2.15.65-2.83 1.45-.6.69-1.12 1.83-1 2.93 1.09.08 2.19-.55 2.83-1.33z" />
+              </svg>
             </button>
 
-            {/* Blue Square - Student */}
+            {/* GitHub */}
             <button
               type="button"
-              onClick={() => fillDemoRole('student')}
-              title="Demo Student: student1@attendx.com"
-              className="w-11 h-11 rounded-2xl bg-gradient-to-b from-[#0084ff] to-[#0060db] hover:brightness-105 active:scale-90 transition-transform shadow-md shadow-blue-500/25 relative overflow-hidden cursor-pointer flex items-center justify-center"
+              onClick={() => handleSocialLogin('GitHub')}
+              title="Continue with GitHub"
+              className="w-11 h-11 rounded-2xl bg-white border border-slate-200/90 hover:border-slate-300 hover:bg-slate-50/80 active:scale-95 transition-all shadow-sm flex items-center justify-center cursor-pointer group"
             >
-              <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/10 to-white/30 pointer-events-none" />
+              <svg className="w-5 h-5 fill-slate-900 transition-transform group-hover:scale-105" viewBox="0 0 24 24">
+                <path
+                  fillRule="evenodd"
+                  clipRule="evenodd"
+                  d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"
+                />
+              </svg>
             </button>
           </div>
 
@@ -313,6 +346,32 @@ export default function LoginPage() {
           <p className="text-[11px] text-slate-400 text-center select-none">
             Log in with your <span className="font-bold text-slate-800">social media</span> account
           </p>
+
+          {/* Quick Demo Credential Pills */}
+          <div className="flex items-center justify-center gap-1.5 pt-1 text-[11px] text-slate-400 select-none">
+            <span className="text-slate-400">Quick demo:</span>
+            <button
+              type="button"
+              onClick={() => fillDemoRole('admin')}
+              className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium transition-colors cursor-pointer text-[10px]"
+            >
+              Admin
+            </button>
+            <button
+              type="button"
+              onClick={() => fillDemoRole('teacher')}
+              className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium transition-colors cursor-pointer text-[10px]"
+            >
+              Teacher
+            </button>
+            <button
+              type="button"
+              onClick={() => fillDemoRole('student')}
+              className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium transition-colors cursor-pointer text-[10px]"
+            >
+              Student
+            </button>
+          </div>
         </div>
 
         {/* Optional subtle footer link */}
