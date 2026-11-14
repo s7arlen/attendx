@@ -40,6 +40,5 @@ const VisitorPassSchema = new Schema<IVisitorPass>(
 // Auto-expire passes via MongoDB TTL (expire 1 day after validUntil)
 VisitorPassSchema.index({ validUntil: 1 }, { expireAfterSeconds: 86400 });
 VisitorPassSchema.index({ visitId: 1 });
-VisitorPassSchema.index({ passCode: 1 });
 
 export const VisitorPass = mongoose.model<IVisitorPass>('VisitorPass', VisitorPassSchema);

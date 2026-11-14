@@ -6,70 +6,109 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   QrCode, User2, Phone, Mail, Building2, Calendar,
   Clock, Users, FileText, CheckCircle2, ChevronRight,
-  Loader2, AlertCircle,
+  ChevronDown, Loader2, AlertCircle, Sparkles, ShieldCheck,
+  ArrowRight, RefreshCw, Briefcase, Award,
 } from 'lucide-react'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Button } from '@/components/ui/button'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import api from '@/lib/axios'
+import { useThemeStore } from '@/store/themeStore'
 
-// ── Schema ──────────────────────────────────────────────────
+// ── Validation Schema ───────────────────────────────────────
 const schema = z.object({
-  fullName:          z.string().min(2, 'Full name is required'),
-  phone:             z.string().min(6, 'Phone number is required'),
-  email:             z.string().email('Valid email required — your QR pass will be sent here'),
+  fullName:          z.string().min(2, 'Please enter your full name'),
+  phone:             z.string().min(6, 'Please enter a valid phone number'),
+  email:             z.string().email('Valid email required so we can send your QR pass'),
   category:          z.enum(['guest','vendor','parent','official','delivery','interview','contractor','other']),
-  nationalId:        z.string().optional(),
-  company:           z.string().optional(),
-  address:           z.string().optional(),
   hostId:            z.string().min(1, 'Please select who you are visiting'),
-  purpose:           z.string().min(5, 'Please describe your purpose of visit'),
-  department:        z.string().min(2, 'Department is required'),
+  department:        z.string().min(1, 'Department is required'),
+  purpose:           z.string().min(3, 'Please state the purpose of your visit'),
   visitDate:         z.string().min(1, 'Visit date is required'),
-  expectedArrival:   z.string().min(1, 'Expected arrival time is required'),
-  expectedDeparture: z.string().min(1, 'Expected departure time is required'),
+  expectedArrival:   z.string().min(1, 'Arrival time is required'),
+  expectedDeparture: z.string().min(1, 'Departure time is required'),
+  // Optional / Collapsible fields
+  company:           z.string().optional(),
+  nationalId:        z.string().optional(),
+  address:           z.string().optional(),
   accompanyingCount: z.string().optional(),
   notes:             z.string().optional(),
 })
 type FormValues = z.infer<typeof schema>
 
-interface Host { _id: string; name: string; email: string; department: string; role: string }
+interface Host {
+  _id?: string
+  id?: string
+  name: string
+  email: string
+  department: string
+  role: string
+}
 
 const CATEGORIES = [
-  { value: 'guest',       label: 'Guest'              },
-  { value: 'parent',      label: 'Parent / Guardian'  },
-  { value: 'vendor',      label: 'Vendor / Supplier'  },
-  { value: 'official',    label: 'Government Official' },
-  { value: 'delivery',    label: 'Delivery'            },
-  { value: 'interview',   label: 'Interview Candidate' },
-  { value: 'contractor',  label: 'Contractor'          },
-  { value: 'other',       label: 'Other'               },
+  { value: 'guest',     label: 'Guest / Visitor', icon: User2 },
+  { value: 'parent',    label: 'Parent / Family', icon: Users },
+  { value: 'interview', label: 'Interview',       icon: Award },
+  { value: 'vendor',    label: 'Vendor / Sales',  icon: Briefcase },
+  { value: 'official',  label: 'Official',        icon: ShieldCheck },
+  { value: 'other',     label: 'Other',           icon: Sparkles },
 ]
 
 export default function VisitorRequestPage() {
-  const [hosts, setHosts]       = useState<Host[]>([])
+  const [hosts, setHosts]               = useState<Host[]>([])
   const [hostsLoading, setHostsLoading] = useState(true)
-  const [submitted, setSubmitted] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError]       = useState('')
-  const [visitId, setVisitId]   = useState('')
+  const [submitted, setSubmitted]       = useState(false)
+  const [submitting, setSubmitting]     = useState(false)
+  const [error, setError]               = useState('')
+  const [visitId, setVisitId]           = useState('')
+  const [showOptional, setShowOptional] = useState(false)
 
-  const { register, handleSubmit, control, watch, formState: { errors } } = useForm<FormValues>({
+  // Smart defaults: today's date, 10:00 AM to 11:00 AM
+  const todayStr = new Date().toISOString().split('T')[0]
+
+  const {
+    register,
+    handleSubmit,
+    control,
+    watch,
+    setValue,
+    reset,
+    formState: { errors },
+  } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
       category: 'guest',
-      visitDate: new Date().toISOString().split('T')[0],
+      department: '',
+      visitDate: todayStr,
+      expectedArrival: '10:00',
+      expectedDeparture: '11:00',
       accompanyingCount: '0',
     },
   })
 
-  const selectedHostId = watch('hostId')
-  const selectedHost   = hosts.find(h => h._id === selectedHostId)
+  const selectedHostId  = watch('hostId')
+  const selectedHost    = hosts.find(h => (h.id || h._id) === selectedHostId)
+  const selectedCategory = watch('category')
 
+  // Enforce Light Mode strictly on the public visitor request page
+  useEffect(() => {
+    document.documentElement.classList.remove('dark')
+    return () => {
+      const currentTheme = useThemeStore.getState().theme
+      if (currentTheme === 'dark') {
+        document.documentElement.classList.add('dark')
+      }
+    }
+  }, [])
+
+  // Auto-sync department when a host is picked
+  useEffect(() => {
+    if (selectedHost) {
+      setValue('department', selectedHost.department || 'Administration', { shouldValidate: true })
+    }
+  }, [selectedHost, setValue])
+
+  // Fetch host directory (public)
   useEffect(() => {
     api.get('/visitor/public/hosts')
-      .then(res => setHosts(res.data.data.hosts))
+      .then(res => setHosts(res.data.data.hosts || []))
       .catch(() => {})
       .finally(() => setHostsLoading(false))
   }, [])
@@ -80,62 +119,93 @@ export default function VisitorRequestPage() {
     try {
       const res = await api.post('/visitor/public/request', {
         ...data,
-        accompanyingCount: parseInt(data.accompanyingCount || '0'),
-        email: data.email,
-        category: data.category,
+        accompanyingCount: parseInt(data.accompanyingCount || '0', 10),
       })
       setVisitId(res.data.data.visitId)
       setSubmitted(true)
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Something went wrong. Please try again.')
+      setError(err.response?.data?.message || 'Unable to submit your visit request. Please verify your details.')
     } finally {
       setSubmitting(false)
     }
   }
 
-  // ── Success screen ─────────────────────────────────────────
+  const handleResetForm = () => {
+    reset({
+      category: 'guest',
+      department: '',
+      visitDate: todayStr,
+      expectedArrival: '10:00',
+      expectedDeparture: '11:00',
+      accompanyingCount: '0',
+      fullName: '',
+      phone: '',
+      email: '',
+      purpose: '',
+      company: '',
+      nationalId: '',
+      notes: '',
+    })
+    setSubmitted(false)
+    setVisitId('')
+    setError('')
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // 1. SUCCESS CONFIRMATION SCREEN (LIGHT MODE)
+  // ─────────────────────────────────────────────────────────────
   if (submitted) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6"
-        style={{ background: 'linear-gradient(145deg,#0a0720,#100d2e,#160b40)' }}>
-        <div className="absolute inset-0 opacity-[0.055] pointer-events-none"
-          style={{ backgroundImage:'radial-gradient(rgba(167,139,250,0.65) 1px,transparent 1px)',backgroundSize:'28px 28px' }} />
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-violet-50 flex items-center justify-center p-4 sm:p-6 text-slate-800">
         <motion.div
-          initial={{ opacity:0, scale:0.95, y:20 }}
-          animate={{ opacity:1, scale:1,    y:0  }}
-          transition={{ duration:0.6, ease:[0.22,1,0.36,1] }}
-          className="relative z-10 w-full max-w-md"
+          initial={{ opacity: 0, scale: 0.96, y: 16 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: 'easeOut' }}
+          className="w-full max-w-lg bg-white rounded-3xl border border-slate-200 shadow-xl shadow-slate-200/60 p-6 sm:p-8 text-center"
         >
-          <div className="rounded-3xl p-8 text-center"
-            style={{ background:'rgba(255,255,255,0.055)',backdropFilter:'blur(24px)',border:'1px solid rgba(255,255,255,0.1)',boxShadow:'0 32px 80px rgba(0,0,0,0.5)' }}>
-            <motion.div
-              initial={{ scale:0 }}
-              animate={{ scale:1 }}
-              transition={{ delay:0.2, type:'spring', stiffness:200 }}
-              className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-5"
-              style={{ background:'rgba(52,211,153,0.15)', border:'2px solid rgba(52,211,153,0.4)' }}
-            >
-              <CheckCircle2 className="w-10 h-10" style={{ color:'#34d399' }} />
-            </motion.div>
-            <h2 className="text-2xl font-extrabold text-white mb-2">Request Submitted!</h2>
-            <p className="text-sm mb-6" style={{ color:'rgba(255,255,255,0.5)' }}>
-              Your visit request has been sent to the host for approval.
-            </p>
-            <div className="rounded-2xl p-4 mb-6 text-left space-y-2"
-              style={{ background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.08)' }}>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full animate-pulse" style={{ background:'#f59e0b' }} />
-                <span className="text-xs font-semibold" style={{ color:'#fbbf24' }}>Pending Approval</span>
-              </div>
-              <p className="text-sm text-white font-medium">What happens next?</p>
-              <ul className="text-xs space-y-1.5" style={{ color:'rgba(255,255,255,0.45)' }}>
-                <li className="flex items-start gap-2"><ChevronRight className="w-3 h-3 mt-0.5 flex-shrink-0 text-violet-400" />The host will review your request</li>
-                <li className="flex items-start gap-2"><ChevronRight className="w-3 h-3 mt-0.5 flex-shrink-0 text-violet-400" />If approved, your QR pass will be sent to your email</li>
-                <li className="flex items-start gap-2"><ChevronRight className="w-3 h-3 mt-0.5 flex-shrink-0 text-violet-400" />Show the QR code or pass code at the security gate</li>
-              </ul>
+          {/* Green Check Icon */}
+          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-emerald-50 border-2 border-emerald-200 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-sm text-emerald-600">
+            <CheckCircle2 className="w-9 h-9 sm:w-11 sm:h-11" />
+          </div>
+
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mb-2">
+            Visit Request Submitted!
+          </h2>
+          <p className="text-sm text-slate-600 mb-6">
+            We have sent your request to the faculty host for review.
+          </p>
+
+          {/* Reference badge */}
+          <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-4 mb-6 text-left">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Reference Code</span>
+              <span className="text-xs font-mono font-bold text-violet-700 bg-violet-50 border border-violet-200 px-2.5 py-1 rounded-md">
+                {String(visitId).slice(-8).toUpperCase()}
+              </span>
             </div>
-            <p className="text-xs" style={{ color:'rgba(255,255,255,0.3)' }}>
-              Reference ID: <span className="font-mono text-violet-400">{String(visitId).slice(-8).toUpperCase()}</span>
+
+            <div className="pt-3 space-y-2.5">
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+                <span className="text-xs font-semibold text-amber-700">Status: Pending Host Approval</span>
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Once approved by the host, an official <strong>Digital QR Pass</strong> will be sent to your email address. Show that QR pass at the security gate to enter.
+              </p>
+            </div>
+          </div>
+
+          {/* Action buttons */}
+          <div className="space-y-3">
+            <button
+              onClick={handleResetForm}
+              className="w-full h-12 bg-slate-900 hover:bg-slate-800 text-white font-medium text-sm rounded-xl transition-all shadow-sm flex items-center justify-center gap-2"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Submit Another Request
+            </button>
+            <p className="text-xs text-slate-400">
+              Questions? Please contact the reception desk upon your arrival.
             </p>
           </div>
         </motion.div>
@@ -143,257 +213,366 @@ export default function VisitorRequestPage() {
     )
   }
 
-  // ── Form ───────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────
+  // 2. MAIN APPLICATION FORM (LIGHT MODE)
+  // ─────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen relative overflow-hidden"
-      style={{ background:'linear-gradient(145deg,#0a0720 0%,#100d2e 45%,#160b40 75%,#0d0924 100%)' }}>
+    <div className="min-h-screen bg-slate-50 text-slate-800 antialiased py-8 px-4 sm:px-6 flex flex-col justify-between">
+      <div className="max-w-xl mx-auto w-full">
 
-      {/* Glow blobs */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute rounded-full" style={{ width:500,height:500,left:'-10%',top:'-15%',background:'radial-gradient(circle,rgba(109,40,217,0.18) 0%,transparent 68%)',filter:'blur(60px)' }} />
-        <div className="absolute rounded-full" style={{ width:400,height:400,right:'-8%',bottom:'-10%',background:'radial-gradient(circle,rgba(79,70,229,0.15) 0%,transparent 68%)',filter:'blur(60px)' }} />
-      </div>
-      <div className="absolute inset-0 opacity-[0.05] pointer-events-none"
-        style={{ backgroundImage:'radial-gradient(rgba(167,139,250,0.65) 1px,transparent 1px)',backgroundSize:'28px 28px' }} />
-
-      <div className="relative z-10 max-w-2xl mx-auto px-4 py-10">
-
-        {/* Header */}
-        <motion.div initial={{ opacity:0,y:-16 }} animate={{ opacity:1,y:0 }} transition={{ duration:0.55 }}
-          className="text-center mb-8">
-          <div className="inline-flex items-center gap-3 mb-5">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-              style={{ background:'linear-gradient(135deg,rgba(109,40,217,0.9),rgba(139,92,246,0.9))',border:'1px solid rgba(255,255,255,0.18)',boxShadow:'0 4px 16px rgba(109,40,217,0.42)' }}>
-              <QrCode className="w-5 h-5 text-white" />
+        {/* Clean Header */}
+        <div className="text-center mb-6 sm:mb-8">
+          <div className="inline-flex items-center gap-2 bg-white px-3.5 py-1.5 rounded-full border border-slate-200 shadow-sm mb-4">
+            <div className="w-6 h-6 rounded-lg bg-violet-600 flex items-center justify-center text-white">
+              <QrCode className="w-3.5 h-3.5" />
             </div>
-            <span className="text-white font-bold text-xl tracking-tight">AttendX</span>
+            <span className="text-xs font-bold tracking-tight text-slate-900">AttendX Campus Access</span>
           </div>
-          <h1 className="text-3xl font-extrabold text-white tracking-tight">Request a Campus Visit</h1>
-          <p className="mt-2 text-sm" style={{ color:'rgba(255,255,255,0.4)' }}>
-            Fill in your details below. The faculty member will approve your request and you'll receive a QR pass by email.
+
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+            Apply for a Visitor Pass
+          </h1>
+          <p className="mt-1.5 text-sm text-slate-500 max-w-md mx-auto">
+            Quick 1-minute registration. Your digital pass will be emailed as soon as the host approves.
           </p>
-        </motion.div>
+        </div>
 
-        {/* Card */}
-        <motion.div initial={{ opacity:0,y:24,scale:0.97 }} animate={{ opacity:1,y:0,scale:1 }} transition={{ duration:0.65,ease:[0.22,1,0.36,1] }}
-          className="rounded-3xl overflow-hidden"
-          style={{ background:'rgba(255,255,255,0.055)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',border:'1px solid rgba(255,255,255,0.1)',boxShadow:'0 32px 80px rgba(0,0,0,0.45),inset 0 1px 0 rgba(255,255,255,0.08)' }}>
-          <div className="absolute top-0 left-8 right-8 h-px" style={{ background:'linear-gradient(90deg,transparent,rgba(255,255,255,0.3),transparent)' }} />
+        {/* Main White Card */}
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-xl shadow-slate-100/80 overflow-hidden">
+          <form onSubmit={handleSubmit(onSubmit)} className="p-6 sm:p-8 space-y-6">
 
-          <form onSubmit={handleSubmit(onSubmit)} className="p-8 space-y-7">
-
-            {/* Error */}
+            {/* Error Alert */}
             <AnimatePresence>
               {error && (
-                <motion.div initial={{ opacity:0,y:-8 }} animate={{ opacity:1,y:0 }} exit={{ opacity:0 }}
-                  className="flex items-start gap-3 p-3.5 rounded-xl"
-                  style={{ background:'rgba(239,68,68,0.1)',border:'1px solid rgba(239,68,68,0.3)' }}>
-                  <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
-                  <p className="text-sm text-red-400">{error}</p>
+                <motion.div
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="flex items-start gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm"
+                >
+                  <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-red-500" />
+                  <span>{error}</span>
                 </motion.div>
               )}
             </AnimatePresence>
 
-            {/* Section: Personal Info */}
-            <Section icon={User2} title="Your Information">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Field label="Full Name *" error={errors.fullName?.message}>
-                  <GlassInput {...register('fullName')} placeholder="John Doe" />
-                </Field>
-                <Field label="Phone Number *" error={errors.phone?.message}>
-                  <GlassInput {...register('phone')} placeholder="+1 234 567 8900" type="tel" />
-                </Field>
-                <Field label="Email Address *" error={errors.email?.message} hint="Your QR pass will be emailed here">
-                  <GlassInput {...register('email')} placeholder="you@example.com" type="email" />
-                </Field>
-                <Field label="Visitor Category *" error={errors.category?.message}>
-                  <Controller name="category" control={control} render={({ field }) => (
-                    <SelectGlass value={field.value} onValueChange={field.onChange}
-                      options={CATEGORIES} placeholder="Select category" />
-                  )} />
-                </Field>
-                <Field label="National ID / Passport">
-                  <GlassInput {...register('nationalId')} placeholder="ID number (optional)" />
-                </Field>
-                <Field label="Company / Organisation">
-                  <GlassInput {...register('company')} placeholder="Your company (optional)" />
-                </Field>
-              </div>
-            </Section>
-
-            {/* Section: Visit Details */}
-            <Section icon={Building2} title="Visit Details">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="sm:col-span-2">
-                  <Field label="Who would you like to visit? *" error={errors.hostId?.message}>
-                    <Controller name="hostId" control={control} render={({ field }) => (
-                      <SelectGlass
-                        value={field.value}
-                        onValueChange={field.onChange}
-                        placeholder={hostsLoading ? 'Loading faculty...' : 'Select faculty member...'}
-                        options={hosts.map(h => ({ value: h._id, label: `${h.name} — ${h.department} (${h.role})` }))}
-                      />
-                    )} />
-                    {selectedHost && (
-                      <p className="text-[11px] mt-1 pl-1" style={{ color:'rgba(167,139,250,0.7)' }}>
-                        {selectedHost.department}
-                      </p>
-                    )}
-                  </Field>
+            {/* SECTION 1: Personal Details */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                <div className="w-7 h-7 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center font-bold text-xs">
+                  1
                 </div>
-                <div className="sm:col-span-2">
-                  <Field label="Purpose of Visit *" error={errors.purpose?.message}>
-                    <GlassInput {...register('purpose')} placeholder="e.g. Meeting about project, Delivery, Job interview..." />
-                  </Field>
-                </div>
-                <Field label="Department *" error={errors.department?.message}>
-                  <GlassInput {...register('department')} placeholder="e.g. Computer Science" />
-                </Field>
-                <Field label="Number of Accompanying Visitors">
-                  <GlassInput {...register('accompanyingCount')} type="number" min="0" max="10" placeholder="0" />
-                </Field>
+                <h2 className="font-semibold text-sm text-slate-900">Your Information</h2>
               </div>
-            </Section>
 
-            {/* Section: Schedule */}
-            <Section icon={Calendar} title="Schedule">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="sm:col-span-1">
-                  <Field label="Visit Date *" error={errors.visitDate?.message}>
-                    <GlassInput {...register('visitDate')} type="date" min={new Date().toISOString().split('T')[0]} />
-                  </Field>
+              {/* Full Name */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Full Name <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <User2 className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    {...register('fullName')}
+                    type="text"
+                    placeholder="e.g. Sarah Jenkins"
+                    className="w-full h-11 pl-10 pr-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-600 transition-all"
+                  />
                 </div>
-                <Field label="Expected Arrival *" error={errors.expectedArrival?.message}>
-                  <GlassInput {...register('expectedArrival')} type="time" />
-                </Field>
-                <Field label="Expected Departure *" error={errors.expectedDeparture?.message}>
-                  <GlassInput {...register('expectedDeparture')} type="time" />
-                </Field>
+                {errors.fullName && <p className="text-xs text-red-500 mt-1">{errors.fullName.message}</p>}
               </div>
-            </Section>
 
-            {/* Section: Additional */}
-            <Section icon={FileText} title="Additional Notes" optional>
-              <GlassInput {...register('notes')} placeholder="Any additional information for the host (optional)" />
-            </Section>
+              {/* Contact Grid: Phone & Email */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Phone Number <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      {...register('phone')}
+                      type="tel"
+                      placeholder="+1 234 567 8900"
+                      className="w-full h-11 pl-10 pr-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-600 transition-all"
+                    />
+                  </div>
+                  {errors.phone && <p className="text-xs text-red-500 mt-1">{errors.phone.message}</p>}
+                </div>
 
-            {/* Info box */}
-            <div className="flex items-start gap-3 p-3.5 rounded-xl"
-              style={{ background:'rgba(139,92,246,0.08)',border:'1px solid rgba(139,92,246,0.18)' }}>
-              <Mail className="w-4 h-4 text-violet-400 flex-shrink-0 mt-0.5" />
-              <p className="text-xs" style={{ color:'rgba(255,255,255,0.5)' }}>
-                Once your request is approved by the faculty member, your QR pass will be sent to your email address. Show it to the security guard at the gate on your visit day.
-              </p>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Email Address <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      {...register('email')}
+                      type="email"
+                      placeholder="sarah@example.com"
+                      className="w-full h-11 pl-10 pr-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-600 transition-all"
+                    />
+                  </div>
+                  {errors.email && <p className="text-xs text-red-500 mt-1">{errors.email.message}</p>}
+                </div>
+              </div>
+
+              {/* Visitor Category Quick Pills */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                  Visiting As <span className="text-red-500">*</span>
+                </label>
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                  {CATEGORIES.map(cat => {
+                    const isSelected = selectedCategory === cat.value
+                    const Icon = cat.icon
+                    return (
+                      <button
+                        type="button"
+                        key={cat.value}
+                        onClick={() => setValue('category', cat.value as any, { shouldValidate: true })}
+                        className={`py-2 px-2 rounded-xl text-xs font-medium border flex flex-col items-center gap-1 transition-all ${
+                          isSelected
+                            ? 'bg-violet-600 text-white border-violet-600 shadow-sm'
+                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        <Icon className="w-3.5 h-3.5" />
+                        <span className="truncate w-full text-center">{cat.label.split(' ')[0]}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
             </div>
 
-            {/* Submit */}
-            <motion.button
+            {/* SECTION 2: Host & Purpose */}
+            <div className="space-y-4 pt-2">
+              <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                <div className="w-7 h-7 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center font-bold text-xs">
+                  2
+                </div>
+                <h2 className="font-semibold text-sm text-slate-900">Host & Purpose</h2>
+              </div>
+
+              {/* Host Selector */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Who Are You Visiting? <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <select
+                    {...register('hostId')}
+                    className="w-full h-11 px-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-600 transition-all appearance-none cursor-pointer"
+                  >
+                    <option value="">{hostsLoading ? 'Loading faculty hosts...' : 'Select a faculty member or staff...'}</option>
+                    {hosts.map(h => {
+                      const hostId = h.id || h._id
+                      return (
+                        <option key={hostId} value={hostId}>
+                          {h.name} ({h.department})
+                        </option>
+                      )
+                    })}
+                  </select>
+                  <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+                {errors.hostId && <p className="text-xs text-red-500 mt-1">{errors.hostId.message}</p>}
+
+                {/* Auto-filled Department badge */}
+                {selectedHost && (
+                  <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 bg-violet-50 border border-violet-200/80 rounded-lg text-xs text-violet-700 font-medium">
+                    <Building2 className="w-3.5 h-3.5 text-violet-500" />
+                    <span>Department: <strong>{selectedHost.department}</strong></span>
+                  </div>
+                )}
+              </div>
+
+              {/* Purpose */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Purpose of Visit <span className="text-red-500">*</span>
+                </label>
+                <input
+                  {...register('purpose')}
+                  type="text"
+                  placeholder="e.g. Project consultation, Parent-teacher meeting, Interview"
+                  className="w-full h-11 px-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-600 transition-all"
+                />
+                {errors.purpose && <p className="text-xs text-red-500 mt-1">{errors.purpose.message}</p>}
+              </div>
+            </div>
+
+            {/* SECTION 3: Schedule */}
+            <div className="space-y-4 pt-2">
+              <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                <div className="w-7 h-7 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center font-bold text-xs">
+                  3
+                </div>
+                <h2 className="font-semibold text-sm text-slate-900">Schedule</h2>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                {/* Date */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Visit Date <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    {...register('visitDate')}
+                    type="date"
+                    min={todayStr}
+                    className="w-full h-11 px-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-600 transition-all cursor-pointer"
+                  />
+                  {errors.visitDate && <p className="text-xs text-red-500 mt-1">{errors.visitDate.message}</p>}
+                </div>
+
+                {/* Arrival */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Arrival Time <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    {...register('expectedArrival')}
+                    type="time"
+                    className="w-full h-11 px-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-600 transition-all cursor-pointer"
+                  />
+                  {errors.expectedArrival && <p className="text-xs text-red-500 mt-1">{errors.expectedArrival.message}</p>}
+                </div>
+
+                {/* Departure */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Departure Time <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    {...register('expectedDeparture')}
+                    type="time"
+                    className="w-full h-11 px-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-600 transition-all cursor-pointer"
+                  />
+                  {errors.expectedDeparture && <p className="text-xs text-red-500 mt-1">{errors.expectedDeparture.message}</p>}
+                </div>
+              </div>
+            </div>
+
+            {/* COLLAPSIBLE SECTION: Optional Details */}
+            <div className="pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowOptional(!showOptional)}
+                className="w-full flex items-center justify-between text-xs font-semibold text-slate-600 hover:text-slate-900 py-2 transition-colors"
+              >
+                <span className="flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 text-slate-400" />
+                  Additional Details (Company, ID, Guests, Notes)
+                  <span className="text-[11px] font-normal text-slate-400">— Optional</span>
+                </span>
+                <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${showOptional ? 'rotate-180' : ''}`} />
+              </button>
+
+              <AnimatePresence>
+                {showOptional && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden space-y-3.5 pt-3"
+                  >
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Company / Organization</label>
+                        <input
+                          {...register('company')}
+                          type="text"
+                          placeholder="e.g. Acme Inc."
+                          className="w-full h-10 px-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-600"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">National ID / Passport</label>
+                        <input
+                          {...register('nationalId')}
+                          type="text"
+                          placeholder="ID number"
+                          className="w-full h-10 px-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-600"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Accompanying Persons</label>
+                        <input
+                          {...register('accompanyingCount')}
+                          type="number"
+                          min="0"
+                          max="10"
+                          placeholder="0"
+                          className="w-full h-10 px-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-600"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Address / City</label>
+                        <input
+                          {...register('address')}
+                          type="text"
+                          placeholder="City, State"
+                          className="w-full h-10 px-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-600"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Notes for Host</label>
+                      <input
+                        {...register('notes')}
+                        type="text"
+                        placeholder="Any additional remarks"
+                        className="w-full h-10 px-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-600"
+                      />
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Informational Email Note */}
+            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-violet-50 border border-violet-100 text-xs text-violet-800">
+              <Mail className="w-4 h-4 text-violet-600 flex-shrink-0 mt-0.5" />
+              <span>
+                Your approved digital QR Pass will be dispatched directly to your email address. Show it to campus security upon arrival.
+              </span>
+            </div>
+
+            {/* Submit Button */}
+            <button
               type="submit"
               disabled={submitting}
-              whileHover={{ scale: submitting ? 1 : 1.012 }}
-              whileTap={{  scale: submitting ? 1 : 0.985 }}
-              className="w-full h-13 rounded-xl font-semibold text-sm flex items-center justify-center gap-2.5 relative overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed text-white"
-              style={{ height:52,background:'linear-gradient(135deg,#5b21b6 0%,#6d28d9 50%,#7c3aed 100%)',border:'1px solid rgba(167,139,250,0.22)',boxShadow:'0 8px 28px rgba(109,40,217,0.42),inset 0 1px 0 rgba(255,255,255,0.12)' }}
+              className="w-full h-12 bg-violet-600 hover:bg-violet-700 active:scale-[0.99] text-white font-semibold text-sm rounded-xl transition-all shadow-md shadow-violet-200 flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
             >
-              <motion.span className="absolute inset-0 pointer-events-none"
-                style={{ background:'linear-gradient(105deg,transparent 35%,rgba(255,255,255,0.12) 50%,transparent 65%)' }}
-                animate={{ x:['-100%','200%'] }} transition={{ duration:2,repeat:Infinity,repeatDelay:3,ease:'linear' }} />
               {submitting ? (
-                <><Loader2 className="w-4 h-4 animate-spin" />Submitting request…</>
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Submitting Request...</span>
+                </>
               ) : (
-                <>Submit Visit Request<ChevronRight className="w-4 h-4" /></>
+                <>
+                  <span>Submit Visit Request</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
               )}
-            </motion.button>
+            </button>
 
           </form>
-        </motion.div>
-
-        <p className="text-center text-xs mt-6" style={{ color:'rgba(255,255,255,0.18)' }}>
-          © 2025 AttendX · Smart Campus Platform
-        </p>
-      </div>
-    </div>
-  )
-}
-
-// ── Helper components ────────────────────────────────────────
-
-function Section({ icon: Icon, title, children, optional }: {
-  icon: React.ElementType
-  title: string
-  children: React.ReactNode
-  optional?: boolean
-}) {
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2.5 pb-3" style={{ borderBottom:'1px solid rgba(255,255,255,0.07)' }}>
-        <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-          style={{ background:'rgba(139,92,246,0.15)' }}>
-          <Icon className="w-3.5 h-3.5" style={{ color:'#a78bfa' }} />
         </div>
-        <span className="font-semibold text-sm text-white">{title}</span>
-        {optional && <span className="text-[10px] ml-1" style={{ color:'rgba(255,255,255,0.3)' }}>(optional)</span>}
+
+        {/* Footer */}
+        <p className="text-center text-xs text-slate-400 mt-6 mb-2">
+          © AttendX · Secure Campus Attendance & Visitor Management Platform
+        </p>
+
       </div>
-      {children}
     </div>
-  )
-}
-
-function Field({ label, error, hint, children }: {
-  label: string
-  error?: string
-  hint?: string
-  children: React.ReactNode
-}) {
-  return (
-    <div className="space-y-1.5">
-      <label className="block text-[11px] font-semibold uppercase tracking-[0.1em]"
-        style={{ color:'rgba(255,255,255,0.4)' }}>{label}</label>
-      {children}
-      {hint && !error && <p className="text-[10px] pl-1" style={{ color:'rgba(255,255,255,0.28)' }}>{hint}</p>}
-      <AnimatePresence>
-        {error && (
-          <motion.p initial={{ opacity:0,y:-4 }} animate={{ opacity:1,y:0 }} exit={{ opacity:0 }}
-            className="text-xs text-red-400 pl-1">{error}</motion.p>
-        )}
-      </AnimatePresence>
-    </div>
-  )
-}
-
-const GlassInput = (props: React.InputHTMLAttributes<HTMLInputElement>) => (
-  <Input
-    {...props}
-    className="border-0 focus-visible:ring-0 placeholder:text-white/[0.18] text-white/90"
-    style={{
-      height: 42,
-      borderRadius: 10,
-      background: 'rgba(255,255,255,0.06)',
-      border: '1px solid rgba(255,255,255,0.1)',
-      color: 'rgba(255,255,255,0.88)',
-    }}
-  />
-)
-
-function SelectGlass({ value, onValueChange, options, placeholder }: {
-  value: string
-  onValueChange: (v: string) => void
-  options: { value: string; label: string }[]
-  placeholder?: string
-}) {
-  return (
-    <Select value={value} onValueChange={onValueChange}>
-      <SelectTrigger
-        className="border-0 focus:ring-0 text-white/80"
-        style={{ height:42,borderRadius:10,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.1)',color:'rgba(255,255,255,0.88)' }}
-      >
-        <SelectValue placeholder={<span style={{ color:'rgba(255,255,255,0.25)' }}>{placeholder}</span>} />
-      </SelectTrigger>
-      <SelectContent>
-        {options.map(o => (
-          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
   )
 }
