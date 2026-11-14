@@ -4,6 +4,7 @@ import { User } from '../models/User.model';
 import { Subject } from '../models/Subject.model';
 import { Timetable } from '../models/Timetable.model';
 import { AttendanceRecord } from '../models/AttendanceRecord.model';
+import { AttendanceSession } from '../models/AttendanceSession.model';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { createAuditLog, getClientIp } from '../utils/auditLogger';
 import { z } from 'zod';
@@ -361,6 +362,21 @@ export const hardDeleteSubject = async (req: AuthRequest, res: Response): Promis
       res.status(404).json({ success: false, message: 'Subject not found' });
       return;
     }
+
+    // Cascade guard: Check if attendance records or sessions exist for this subject
+    const [recordCount, sessionCount] = await Promise.all([
+      AttendanceRecord.countDocuments({ subjectId: id }),
+      AttendanceSession.countDocuments({ subjectId: id }),
+    ]);
+
+    if (recordCount > 0 || sessionCount > 0) {
+      res.status(409).json({
+        success: false,
+        message: `Cannot permanently delete "${subject.subjectName}" because it has ${recordCount} attendance record(s) and ${sessionCount} session(s). Deactivate the subject instead to preserve academic history.`,
+      });
+      return;
+    }
+
     await Subject.findByIdAndDelete(id);
     await createAuditLog(req.user!.userId, 'HARD_DELETE_SUBJECT', 'Subject', id, { subjectName: subject.subjectName, subjectCode: subject.subjectCode }, getClientIp(req));
     res.json({ success: true, message: 'Subject permanently deleted' });

@@ -26,6 +26,8 @@ export interface IUser extends Document {
   avatar?: string;
   isActive: boolean;
   refreshToken?: string;
+  passwordResetToken?: string;
+  passwordResetExpires?: Date;
   webauthnChallenge?: string;  // temp challenge during registration/auth
   webauthnCredentials: IWebAuthnCredential[];
   createdAt: Date;
@@ -47,6 +49,8 @@ const UserSchema = new Schema<IUser>(
     avatar: { type: String },
     isActive: { type: Boolean, default: true },
     refreshToken: { type: String },
+    passwordResetToken: { type: String },
+    passwordResetExpires: { type: Date },
     webauthnChallenge: { type: String },
     webauthnCredentials: {
       type: [{

@@ -31,7 +31,7 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
       return;
     }
 
-    req.user = { userId: decoded.userId, role: decoded.role, email: decoded.email };
+    req.user = { userId: decoded.userId, role: user.role, email: user.email };
     next();
   } catch (error) {
     if (error instanceof jwt.TokenExpiredError) {

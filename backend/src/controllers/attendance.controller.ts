@@ -342,7 +342,7 @@ export const getAttendanceHistory = async (req: AuthRequest, res: Response): Pro
         .populate('subjectId', 'subjectName subjectCode department')
         .populate({
           path: 'sessionId',
-          select: 'startTime endTime passwordCode status',
+          select: 'startTime expiryTime passwordCode status duration',
         })
         .sort({ timestamp: -1 })
         .skip(skip)
@@ -367,9 +367,10 @@ export const getAttendanceSummary = async (req: AuthRequest, res: Response): Pro
     const subjectMap = new Map<string, { subjectName: string; subjectCode: string; present: number }>();
     records.forEach((record) => {
       const subject = record.subjectId as any;
+      if (!subject || !subject._id) return;
       const key = subject._id.toString();
       if (!subjectMap.has(key)) {
-        subjectMap.set(key, { subjectName: subject.subjectName, subjectCode: subject.subjectCode, present: 0 });
+        subjectMap.set(key, { subjectName: subject.subjectName || 'Unknown Subject', subjectCode: subject.subjectCode || 'N/A', present: 0 });
       }
       subjectMap.get(key)!.present += 1;
     });

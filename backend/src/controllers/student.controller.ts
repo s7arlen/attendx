@@ -31,7 +31,7 @@ export const getMyAttendance = async (req: AuthRequest, res: Response): Promise<
       .populate('subjectId', 'subjectName subjectCode department')
       .populate({
         path: 'sessionId',
-        select: 'startTime endTime status',
+        select: 'startTime expiryTime status duration',
       })
       .sort({ timestamp: -1 });
 
@@ -39,9 +39,10 @@ export const getMyAttendance = async (req: AuthRequest, res: Response): Promise<
     const subjectMap = new Map<string, { subjectName: string; subjectCode: string; present: number; records: any[] }>();
     records.forEach(record => {
       const subject = record.subjectId as any;
+      if (!subject || !subject._id) return;
       const key = subject._id.toString();
       if (!subjectMap.has(key)) {
-        subjectMap.set(key, { subjectName: subject.subjectName, subjectCode: subject.subjectCode, present: 0, records: [] });
+        subjectMap.set(key, { subjectName: subject.subjectName || 'Unknown Subject', subjectCode: subject.subjectCode || 'N/A', present: 0, records: [] });
       }
       const entry = subjectMap.get(key)!;
       entry.present += 1;

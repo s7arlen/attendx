@@ -36,7 +36,7 @@ const AttendanceSessionSchema = new Schema<IAttendanceSession>(
   { timestamps: true }
 );
 
-// Auto-expire sessions
-AttendanceSessionSchema.index({ expiryTime: 1 }, { expireAfterSeconds: 0 });
+// Index for fast query by status and teacher/subject
+AttendanceSessionSchema.index({ subjectId: 1, teacherId: 1, status: 1 });
 
 export const AttendanceSession = mongoose.model<IAttendanceSession>('AttendanceSession', AttendanceSessionSchema);

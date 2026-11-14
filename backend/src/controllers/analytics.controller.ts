@@ -1,4 +1,5 @@
 import { Response } from 'express';
+import mongoose from 'mongoose';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { AttendanceRecord } from '../models/AttendanceRecord.model';
 import { AttendanceSession } from '../models/AttendanceSession.model';
@@ -87,6 +88,7 @@ export const getAdminAnalytics = async (req: AuthRequest, res: Response): Promis
 export const getTeacherAnalytics = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const teacherId = req.user!.userId;
+    const teacherObjectId = new mongoose.Types.ObjectId(teacherId);
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
     const subjects = await Subject.find({ assignedTeacher: teacherId, isActive: true });
@@ -97,7 +99,7 @@ export const getTeacherAnalytics = async (req: AuthRequest, res: Response): Prom
 
     // Attendance trend per session
     const attendanceTrend = await AttendanceSession.aggregate([
-      { $match: { teacherId: { $toString: teacherId }, createdAt: { $gte: thirtyDaysAgo } } },
+      { $match: { teacherId: teacherObjectId, createdAt: { $gte: thirtyDaysAgo } } },
       {
         $lookup: {
           from: 'attendancerecords',
@@ -152,10 +154,11 @@ export const getTeacherAnalytics = async (req: AuthRequest, res: Response): Prom
 export const getStudentAnalytics = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const studentId = req.user!.userId;
+    const studentObjectId = new mongoose.Types.ObjectId(studentId);
 
     // Monthly attendance trend
     const monthlyTrend = await AttendanceRecord.aggregate([
-      { $match: { studentId: { $toString: studentId } } },
+      { $match: { studentId: studentObjectId } },
       {
         $group: {
           _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } },
@@ -167,7 +170,7 @@ export const getStudentAnalytics = async (req: AuthRequest, res: Response): Prom
 
     // Per-subject attendance
     const subjectBreakdown = await AttendanceRecord.aggregate([
-      { $match: { studentId: { $toString: studentId } } },
+      { $match: { studentId: studentObjectId } },
       { $group: { _id: '$subjectId', present: { $sum: 1 } } },
       { $lookup: { from: 'subjects', localField: '_id', foreignField: '_id', as: 'subject' } },
       { $unwind: '$subject' },

@@ -258,12 +258,13 @@ export const forgotPassword = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // Generate a reset token (6-digit code stub — replace with email send when SMTP configured)
+    // Generate a secure reset token
     const resetCode = crypto.randomInt(100000, 999999).toString();
     const resetTokenExpiry = new Date(Date.now() + 15 * 60 * 1000); // 15 min
 
     await User.findByIdAndUpdate(user._id, {
-      webauthnChallenge: `reset:${resetCode}:${resetTokenExpiry.getTime()}`,
+      passwordResetToken: resetCode,
+      passwordResetExpires: resetTokenExpiry,
     });
 
     // Try to send email — falls back to dev console log if SMTP not configured
@@ -296,22 +297,30 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
     }
 
     const user = await User.findOne({ email, isActive: true });
-    if (!user || !user.webauthnChallenge?.startsWith('reset:')) {
+    if (!user) {
       res.status(400).json({ success: false, message: 'Invalid or expired reset code' });
       return;
     }
 
-    const parts = user.webauthnChallenge.split(':');
-    const storedCode = parts[1];
-    const expiryMs = parseInt(parts[2]);
+    let isValid = false;
+    if (user.passwordResetToken && user.passwordResetExpires) {
+      isValid = user.passwordResetToken === resetCode && user.passwordResetExpires > new Date();
+    } else if (user.webauthnChallenge?.startsWith('reset:')) {
+      const parts = user.webauthnChallenge.split(':');
+      const storedCode = parts[1];
+      const expiryMs = parseInt(parts[2]);
+      isValid = storedCode === resetCode && Date.now() <= expiryMs;
+    }
 
-    if (storedCode !== resetCode || Date.now() > expiryMs) {
+    if (!isValid) {
       res.status(400).json({ success: false, message: 'Invalid or expired reset code' });
       return;
     }
 
     const salt = await bcrypt.genSalt(12);
     user.passwordHash = await bcrypt.hash(newPassword, salt);
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
     user.webauthnChallenge = undefined;
     await user.save();
 

@@ -162,9 +162,9 @@ export default function App() {
             <Route path="events" element={<EventManagementPage />} />
           </Route>
 
-          {/* Block old /admin path */}
-          <Route path="/admin" element={<Navigate to="/" replace />} />
-          <Route path="/admin/*" element={<Navigate to="/" replace />} />
+          {/* Redirect /admin paths to /len-admin */}
+          <Route path="/admin" element={<Navigate to="/len-admin" replace />} />
+          <Route path="/admin/*" element={<Navigate to="/len-admin" replace />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
         <Toaster />
