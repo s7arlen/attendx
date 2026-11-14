@@ -105,28 +105,41 @@ export const sendVisitorApprovedEmail = async (
     console.log(`[DEV] Visit approved for ${visitorName} — pass code: ${passCode}`);
     return false;
   }
+
+  // Convert base64 data URL to Buffer for CID inline email attachment (required by Gmail/Outlook)
+  const base64Data = qrCodeData.replace(/^data:image\/png;base64,/, '');
+  const qrBuffer = Buffer.from(base64Data, 'base64');
+
   await smtp.transporter.sendMail({
     from: smtp.from,
     to: toEmail,
     subject: 'AttendX — Your Visit is Approved! Here is your QR Pass',
     html: `
-      <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:32px">
-        <h2 style="color:#2563EB;margin-bottom:4px">AttendX Campus Pass</h2>
-        <p style="color:#6b7280;font-size:13px;margin-bottom:24px">Visit Approved</p>
-        <p>Hi <strong>${visitorName}</strong>,</p>
-        <p>Your visit request has been <strong style="color:#10b981">approved</strong> by <strong>${hostName}</strong>.</p>
+      <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:32px;background:#ffffff;border:1px solid #e2e8f0;border-radius:16px">
+        <h2 style="color:#4f46e5;margin-bottom:4px;font-size:22px">AttendX Campus Pass</h2>
+        <p style="color:#64748b;font-size:13px;margin-bottom:20px">Visit Approved</p>
+        <p style="color:#1e293b;font-size:15px">Hi <strong>${visitorName}</strong>,</p>
+        <p style="color:#334155;font-size:14px;line-height:1.5">Your visit request has been <strong style="color:#16a34a">approved</strong> by <strong>${hostName}</strong>.</p>
         <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:20px;margin:20px 0;text-align:center">
-          <p style="margin:0 0 8px;font-size:13px;color:#6b7280">Your Pass Code</p>
-          <p style="margin:0;font-size:32px;font-weight:800;letter-spacing:6px;color:#1f2937;font-family:monospace">${passCode}</p>
-          <p style="margin:8px 0 0;font-size:12px;color:#6b7280">Valid for: ${visitDate}</p>
+          <p style="margin:0 0 6px;font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:1px;font-weight:600">Your Pass Code</p>
+          <p style="margin:0;font-size:30px;font-weight:800;letter-spacing:5px;color:#0f172a;font-family:monospace">${passCode}</p>
+          <p style="margin:8px 0 0;font-size:13px;color:#475569">Valid for: <strong>${visitDate}</strong></p>
         </div>
-        <div style="text-align:center;margin:16px 0">
-          <img src="${qrCodeData}" alt="Visitor QR Pass" style="width:200px;height:200px;border-radius:12px;border:1px solid #e5e7eb" />
-          <p style="font-size:12px;color:#6b7280;margin-top:8px">Show this QR code or your pass code at the security gate</p>
+        <div style="text-align:center;margin:24px 0">
+          <img src="cid:visitor-qr-code" alt="Visitor QR Pass" style="width:200px;height:200px;border-radius:12px;border:1px solid #e2e8f0;display:inline-block" />
+          <p style="font-size:12px;color:#64748b;margin-top:10px">Show this QR code or your pass code at the security gate for entry</p>
         </div>
-        <p style="color:#6b7280;font-size:12px;margin-top:32px">— The AttendX Team</p>
+        <hr style="border:none;border-top:1px solid #f1f5f9;margin:24px 0" />
+        <p style="color:#94a3b8;font-size:12px;margin:0">— The AttendX Team · Smart Campus Platform</p>
       </div>
     `,
+    attachments: [
+      {
+        filename: 'visitor-qr.png',
+        content: qrBuffer,
+        cid: 'visitor-qr-code',
+      },
+    ],
   });
   return true;
 };
