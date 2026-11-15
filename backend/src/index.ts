@@ -20,6 +20,7 @@ import notificationsRoutes from './routes/notifications.routes';
 import uploadRoutes from './routes/upload.routes';
 import visitorRoutes from './routes/visitor.routes';
 import { errorHandler } from './middleware/errorHandler';
+import { startAttendanceAlertJob } from './jobs/attendanceAlert';
 
 dotenv.config();
 
@@ -82,6 +83,18 @@ app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString(), service: 'AttendX API' });
 });
 
+// Manual trigger for attendance alert (admin only — for testing)
+app.post('/admin-trigger/attendance-alert', async (req, res) => {
+  const secret = req.headers['x-trigger-secret'];
+  if (secret !== process.env.JWT_SECRET) {
+    res.status(401).json({ success: false, message: 'Unauthorized' });
+    return;
+  }
+  const { checkAndAlert } = await import('./jobs/attendanceAlert');
+  await checkAndAlert();
+  res.json({ success: true, message: 'Attendance alert job triggered manually' });
+});
+
 // Error handler
 app.use(errorHandler);
 
@@ -94,6 +107,9 @@ const startServer = async () => {
     console.log(`[server] Socket.IO enabled`);
     console.log(`[server] Environment: ${process.env.NODE_ENV}`);
   });
+
+  // Start cron jobs
+  startAttendanceAlertJob();
 };
 
 startServer();

@@ -144,6 +144,91 @@ export const sendVisitorApprovedEmail = async (
   return true;
 };
 
+export const sendAttendanceWarningEmail = async (
+  toEmail: string,
+  studentName: string,
+  lowSubjects: { subjectName: string; subjectCode: string; present: number; total: number; percentage: number }[]
+): Promise<boolean> => {
+  const smtp = createTransporter();
+
+  if (!smtp) {
+    console.log(`\n📧 [DEV — no SMTP] Attendance warning for ${studentName}`);
+    lowSubjects.forEach(s => console.log(`   ⚠️  ${s.subjectCode} — ${s.percentage}%`));
+    return false;
+  }
+
+  const subjectRows = lowSubjects.map(s => `
+    <tr>
+      <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#1e293b;font-weight:600">${s.subjectName}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#64748b;font-family:monospace;font-size:13px">${s.subjectCode}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;text-align:center">${s.present}/${s.total}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;text-align:center">
+        <span style="background:${s.percentage < 60 ? '#fef2f2' : '#fff7ed'};color:${s.percentage < 60 ? '#dc2626' : '#ea580c'};padding:3px 10px;border-radius:999px;font-weight:700;font-size:13px">${s.percentage}%</span>
+      </td>
+    </tr>
+  `).join('');
+
+  await smtp.transporter.sendMail({
+    from: smtp.from,
+    to: toEmail,
+    subject: `⚠️ Attendance Warning — ${lowSubjects.length} subject(s) below 75%`,
+    html: `
+      <div style="font-family:sans-serif;max-width:560px;margin:auto;padding:32px;background:#ffffff;border:1px solid #e2e8f0;border-radius:16px">
+
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:24px">
+          <div style="background:#2563eb;border-radius:12px;padding:8px;display:inline-block">
+            <span style="color:#fff;font-size:20px">📋</span>
+          </div>
+          <div>
+            <h2 style="margin:0;color:#2563eb;font-size:20px">AttendX</h2>
+            <p style="margin:0;color:#94a3b8;font-size:12px">Attendance Management System</p>
+          </div>
+        </div>
+
+        <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:16px 20px;margin-bottom:24px">
+          <p style="margin:0;color:#9a3412;font-size:14px;font-weight:600">⚠️ Attendance Warning</p>
+          <p style="margin:6px 0 0;color:#c2410c;font-size:13px">Your attendance has dropped below 75% in one or more subjects.</p>
+        </div>
+
+        <p style="color:#334155;font-size:15px">Hi <strong>${studentName}</strong>,</p>
+        <p style="color:#475569;font-size:14px;line-height:1.6">
+          This is an automated reminder that your attendance is currently below the required <strong>75% threshold</strong> in the following subject(s). 
+          Please attend classes regularly to avoid being marked as a defaulter.
+        </p>
+
+        <table style="width:100%;border-collapse:collapse;margin:20px 0;font-size:14px">
+          <thead>
+            <tr style="background:#f8fafc">
+              <th style="padding:10px 12px;text-align:left;color:#64748b;font-weight:600;border-bottom:2px solid #e2e8f0">Subject</th>
+              <th style="padding:10px 12px;text-align:left;color:#64748b;font-weight:600;border-bottom:2px solid #e2e8f0">Code</th>
+              <th style="padding:10px 12px;text-align:center;color:#64748b;font-weight:600;border-bottom:2px solid #e2e8f0">Present/Total</th>
+              <th style="padding:10px 12px;text-align:center;color:#64748b;font-weight:600;border-bottom:2px solid #e2e8f0">Percentage</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${subjectRows}
+          </tbody>
+        </table>
+
+        <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:14px 18px;margin-top:20px">
+          <p style="margin:0;color:#0369a1;font-size:13px">
+            💡 <strong>Tip:</strong> You need at least 75% attendance in each subject to be eligible for exams. 
+            Contact your class teacher if you have any concerns.
+          </p>
+        </div>
+
+        <hr style="border:none;border-top:1px solid #f1f5f9;margin:28px 0" />
+        <p style="color:#94a3b8;font-size:12px;margin:0;text-align:center">
+          This is an automated message from AttendX. Please do not reply to this email.<br/>
+          — AttendX Attendance Management System
+        </p>
+      </div>
+    `,
+  });
+
+  return true;
+};
+
 export const sendVisitorRejectedEmail = async (
   toEmail: string,
   visitorName: string,
