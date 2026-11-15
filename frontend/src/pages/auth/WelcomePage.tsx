@@ -88,7 +88,7 @@ export default function WelcomePage() {
       >
         <button
           type="button"
-          onClick={() => navigate('/register')}
+          onClick={() => navigate('/login')}
           className="w-full bg-white hover:bg-slate-50 text-[#1d4ed8] font-bold py-3.5 px-8 rounded-full shadow-2xl shadow-blue-950/30 transition-all text-base tracking-wide active:scale-95 cursor-pointer flex items-center justify-center gap-2 group"
         >
           <span>Get Started</span>
@@ -97,10 +97,10 @@ export default function WelcomePage() {
 
         <button
           type="button"
-          onClick={() => navigate('/login')}
+          onClick={() => navigate('/register')}
           className="text-white/80 hover:text-white text-xs font-medium tracking-wide mt-3.5 cursor-pointer transition-colors active:opacity-75"
         >
-          I already have an account
+          Don't have an account? <span className="underline underline-offset-2">Create one</span>
         </button>
       </motion.div>
     </div>
