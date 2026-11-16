@@ -253,7 +253,14 @@ export default function LoginPage() {
                 className="w-3.5 h-3.5 rounded text-[#2563eb] border-slate-300 focus:ring-[#2563eb] cursor-pointer accent-[#2563eb]"
               />
               <span>
-                I agree to the <span className="font-semibold text-slate-700">terms and conditions</span>
+                I agree to the{' '}
+                <Link to="/terms" className="font-semibold text-slate-700 hover:text-[#2563eb] hover:underline" target="_blank">
+                  terms
+                </Link>{' '}
+                and{' '}
+                <Link to="/privacy" className="font-semibold text-slate-700 hover:text-[#2563eb] hover:underline" target="_blank">
+                  privacy policy
+                </Link>
               </span>
             </label>
           </div>
@@ -374,14 +381,25 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Optional subtle footer link */}
-        <div className="text-center pt-1 pb-0.5">
-          <Link
-            to="/forgot-password"
-            className="text-[11px] text-slate-400 hover:text-[#2563eb] transition-colors"
-          >
-            Forgot your password?
-          </Link>
+        {/* Optional subtle footer links */}
+        <div className="text-center pt-1 pb-0.5 space-y-1">
+          <div>
+            <Link
+              to="/forgot-password"
+              className="text-[11px] text-slate-400 hover:text-[#2563eb] transition-colors"
+            >
+              Forgot your password?
+            </Link>
+          </div>
+          <div className="flex items-center justify-center gap-3 text-[10px] text-slate-400 select-none">
+            <Link to="/privacy" className="hover:text-[#2563eb] transition-colors">
+              Privacy Policy
+            </Link>
+            <span>•</span>
+            <Link to="/terms" className="hover:text-[#2563eb] transition-colors">
+              Terms & Conditions
+            </Link>
+          </div>
         </div>
 
       </div>

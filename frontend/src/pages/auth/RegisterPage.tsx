@@ -203,6 +203,17 @@ export default function RegisterPage() {
               </div>
             </div>
 
+            <p className="text-xs text-muted-foreground text-center pt-2 select-none">
+              By creating an account, you agree to our{' '}
+              <Link to="/terms" className="text-primary hover:underline font-medium" target="_blank">
+                Terms of Service
+              </Link>{' '}
+              and{' '}
+              <Link to="/privacy" className="text-primary hover:underline font-medium" target="_blank">
+                Privacy Policy
+              </Link>.
+            </p>
+
             <Button type="submit" className="w-full mt-2" size="lg" loading={loading} variant="gradient">
               Create Account
               <ArrowRight className="w-4 h-4 ml-1" />

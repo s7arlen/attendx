@@ -13,6 +13,8 @@ import RegisterPage from '@/pages/auth/RegisterPage'
 import ForgotPasswordPage from '@/pages/auth/ForgotPasswordPage'
 import ResetPasswordPage from '@/pages/auth/ResetPasswordPage'
 import NotFoundPage from '@/pages/NotFoundPage'
+import PrivacyPolicyPage from '@/pages/legal/PrivacyPolicyPage'
+import TermsPage from '@/pages/legal/TermsPage'
 
 // Admin Pages
 import AdminDashboard from '@/pages/admin/AdminDashboard'
@@ -107,6 +109,10 @@ export default function App() {
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/privacy" element={<PrivacyPolicyPage />} />
+          <Route path="/privacy-policy" element={<Navigate to="/privacy" replace />} />
+          <Route path="/terms" element={<TermsPage />} />
+          <Route path="/terms-and-conditions" element={<Navigate to="/terms" replace />} />
           <Route path="/visitor-request" element={<VisitorRequestPage />} />
           <Route path="/" element={<RootRedirect />} />
 

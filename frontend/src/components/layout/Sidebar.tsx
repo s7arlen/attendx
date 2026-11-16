@@ -252,6 +252,17 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
           )}
         </nav>
 
+        {/* ── Legal & Version Footer ── */}
+        {!collapsed && (
+          <div className="px-3 py-1.5 border-t border-border/50 flex items-center justify-center gap-2 text-[10px] text-muted-foreground/70 select-none">
+            <Link to="/privacy" className="hover:text-primary transition-colors">Privacy</Link>
+            <span>•</span>
+            <Link to="/terms" className="hover:text-primary transition-colors">Terms</Link>
+            <span>•</span>
+            <span>AttendX v2.0</span>
+          </div>
+        )}
+
         {/* ── Logout ── */}
         <div className={cn(
           'p-2 border-t border-border flex-shrink-0',

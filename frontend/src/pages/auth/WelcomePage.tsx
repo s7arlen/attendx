@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { QrCode, ArrowRight } from 'lucide-react'
 
@@ -102,6 +102,16 @@ export default function WelcomePage() {
         >
           Don't have an account? <span className="underline underline-offset-2">Create one</span>
         </button>
+
+        <div className="flex items-center justify-center gap-3 text-[11px] text-white/60 mt-3 select-none">
+          <Link to="/privacy" className="hover:text-white transition-colors underline underline-offset-2">
+            Privacy Policy
+          </Link>
+          <span>•</span>
+          <Link to="/terms" className="hover:text-white transition-colors underline underline-offset-2">
+            Terms of Service
+          </Link>
+        </div>
       </motion.div>
     </div>
   )
