@@ -78,7 +78,81 @@ export const publishAssessment = async (req: AuthRequest, res: Response): Promis
   } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
 };
 
-// ── MARKS ENTRY ───────────────────────────────────────────────
+export const deleteAssessment = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const assessment = await Assessment.findById(id);
+    if (!assessment) { res.status(404).json({ success: false, message: 'Assessment not found' }); return; }
+    if (req.user!.role === 'teacher' && assessment.teacherId.toString() !== req.user!.userId) {
+      res.status(403).json({ success: false, message: 'Not authorized' }); return;
+    }
+    if (assessment.isPublished) {
+      res.status(400).json({ success: false, message: 'Cannot delete a published assessment' }); return;
+    }
+    await Assessment.findByIdAndUpdate(id, { isActive: false });
+    res.json({ success: true, message: 'Assessment deleted' });
+  } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
+};
+
+export const getStudentsBySubject = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { subjectId } = req.params;
+    const subject = await Subject.findById(subjectId);
+    if (!subject) { res.status(404).json({ success: false, message: 'Subject not found' }); return; }
+    if (req.user!.role === 'teacher' && subject.assignedTeacher.toString() !== req.user!.userId) {
+      res.status(403).json({ success: false, message: 'Not authorized' }); return;
+    }
+    const students = await User.find({
+      role: 'student',
+      department: subject.department,
+      year: subject.year,
+      section: subject.section,
+      isActive: true,
+    }).select('name email rollNumber year section').sort({ name: 1 });
+    res.json({ success: true, data: { students } });
+  } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
+};
+
+export const exportAssessmentCSV = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { assessmentId } = req.params;
+    const assessment = await Assessment.findById(assessmentId).populate('subjectId', 'subjectName subjectCode');
+    if (!assessment) { res.status(404).json({ success: false, message: 'Assessment not found' }); return; }
+    if (req.user!.role === 'teacher' && assessment.teacherId.toString() !== req.user!.userId) {
+      res.status(403).json({ success: false, message: 'Not authorized' }); return;
+    }
+    const results = await AssessmentResult.find({ assessmentId })
+      .populate('studentId', 'name email rollNumber year section')
+      .sort({ 'studentId.name': 1 });
+
+    const sub = assessment.subjectId as any;
+    const rows = [
+      ['Roll Number', 'Student Name', 'Email', 'Marks Obtained', 'Max Marks', 'Percentage', 'Status'],
+      ...results.map(r => {
+        const s = r.studentId as any;
+        const pct = r.isAbsent ? 'Absent' : `${Math.round((r.marksObtained / assessment.maxMarks) * 100)}%`;
+        return [
+          s?.rollNumber || '',
+          s?.name || '',
+          s?.email || '',
+          r.isAbsent ? 'Absent' : r.marksObtained,
+          assessment.maxMarks,
+          pct,
+          r.isAbsent ? 'Absent' : (r.marksObtained >= assessment.maxMarks * 0.4 ? 'Pass' : 'Fail'),
+        ];
+      }),
+    ];
+
+    const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+    const filename = `${sub?.subjectCode || 'assessment'}_${assessment.title.replace(/\s+/g, '_')}.csv`;
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(csv);
+  } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
+};
+
+
 
 export const enterMarks = async (req: AuthRequest, res: Response): Promise<void> => {
   try {

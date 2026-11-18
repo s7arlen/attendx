@@ -1,5 +1,5 @@
 import api from '@/lib/axios';
-import { Assessment, AssessmentResult, RiskAssessment, RiskDashboard, StudentAcademicProfile, Intervention } from '@/types';
+import { Assessment, AssessmentResult, RiskAssessment, RiskDashboard, StudentAcademicProfile, Intervention, User } from '@/types';
 
 export const academicService = {
 
@@ -71,6 +71,20 @@ export const academicService = {
   getMLInfo: async () => {
     const res = await api.get('/academic/ml/info');
     return res.data.data as { mlAvailable: boolean; modelInfo: any };
+  },
+
+  getStudentsBySubject: async (subjectId: string) => {
+    const res = await api.get(`/academic/subjects/${subjectId}/students`);
+    return res.data.data.students as User[];
+  },
+
+  exportAssessmentCSV: (assessmentId: string) => {
+    window.open(`${api.defaults.baseURL}/academic/assessments/${assessmentId}/export`, '_blank');
+  },
+
+  deleteAssessment: async (id: string) => {
+    const res = await api.delete(`/academic/assessments/${id}`);
+    return res.data;
   },
 
   // ── What-If ────────────────────────────────────────────────

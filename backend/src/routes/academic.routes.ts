@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 import {
   createAssessment, getAssessments, updateAssessment, publishAssessment,
+  deleteAssessment, getStudentsBySubject, exportAssessmentCSV,
   enterMarks, getAssessmentResults,
   getStudentAcademicProfile,
   getStudentRisk, triggerRiskForStudent, getRiskDashboard,
@@ -17,6 +18,11 @@ router.post('/assessments', authorize('teacher','admin'), createAssessment);
 router.get('/assessments', authorize('teacher','admin','student'), getAssessments);
 router.put('/assessments/:id', authorize('teacher','admin'), updateAssessment);
 router.patch('/assessments/:id/publish', authorize('teacher','admin'), publishAssessment);
+router.delete('/assessments/:id', authorize('teacher','admin'), deleteAssessment);
+router.get('/assessments/:assessmentId/export', authorize('teacher','admin'), exportAssessmentCSV);
+
+// ── Students by subject ───────────────────────────────────────
+router.get('/subjects/:subjectId/students', authorize('teacher','admin'), getStudentsBySubject);
 
 // ── Marks entry ───────────────────────────────────────────────
 router.post('/marks', authorize('teacher','admin'), enterMarks);
