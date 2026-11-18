@@ -4,6 +4,4 @@ __pycache__/
 .env
 venv/
 .venv/
-# Keep model files in repo for deployment
-# models/*.joblib
-# models/model_metadata.json
+data/*.csv
