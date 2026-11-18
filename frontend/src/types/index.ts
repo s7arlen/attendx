@@ -149,7 +149,127 @@ export interface ApiError {
   message?: string;
 }
 
-// ─── Visitor Management Types ────────────────────────────────
+// ─── Academic / AttendX 2.0 Types ────────────────────────────
+
+export type AssessmentType = 'internal_exam' | 'unit_test' | 'quiz' | 'assignment' | 'practical' | 'project' | 'other';
+export type RiskLevel = 'LOW' | 'MODERATE' | 'HIGH' | 'UNASSESSED';
+export type InterventionType = 'counselling' | 'mentoring' | 'remedial_class' | 'subject_support' | 'assignment_help' | 'parent_meeting' | 'other';
+export type InterventionStatus = 'pending' | 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
+
+export interface Assessment {
+  _id: string;
+  title: string;
+  type: AssessmentType;
+  subjectId: Subject | string;
+  teacherId: User | string;
+  department: string;
+  year: number;
+  section: string;
+  maxMarks: number;
+  assessmentDate: string;
+  dueDate?: string;
+  description?: string;
+  isPublished: boolean;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface AssessmentResult {
+  _id: string;
+  assessmentId: Assessment | string;
+  studentId: User | string;
+  subjectId: Subject | string;
+  marksObtained: number;
+  isAbsent: boolean;
+  submittedLate?: boolean;
+  feedback?: string;
+  gradedBy: User | string;
+  createdAt: string;
+}
+
+export interface ContributingFactor {
+  factor: string;
+  value: number | string;
+  impact: 'LOW' | 'MEDIUM' | 'HIGH';
+}
+
+export interface RiskAssessment {
+  _id: string;
+  studentId: User | string;
+  riskLevel: RiskLevel;
+  assessmentMethod: 'RULE_BASED' | 'ML_MODEL';
+  riskScore: number;
+  contributingFactors: ContributingFactor[];
+  recommendations: string[];
+  attendancePercentage?: number;
+  internalMarksAverage?: number;
+  assignmentCompletionRate?: number;
+  quizAverage?: number;
+  modelVersion: string;
+  dataWarnings: string[];
+  previousRiskLevel?: RiskLevel;
+  createdAt: string;
+}
+
+export interface Intervention {
+  _id: string;
+  studentId: User | string;
+  facultyId: User | string;
+  type: InterventionType;
+  description: string;
+  scheduledDate: string;
+  followUpDate?: string;
+  status: InterventionStatus;
+  outcome?: string;
+  notes?: string;
+  riskLevelAtCreation?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StudentAcademicProfile {
+  student: User;
+  subjects: number;
+  attendance: {
+    subjectId: string;
+    subjectName: string;
+    subjectCode: string;
+    present: number;
+    total: number;
+    percentage: number;
+  }[];
+  overallAttendance: number;
+  assessmentsByType: Record<string, {
+    title: string;
+    subjectName: string;
+    subjectCode: string;
+    maxMarks: number;
+    marksObtained: number;
+    isAbsent: boolean;
+    date: string;
+    percentage: number;
+  }[]>;
+  riskAssessment: RiskAssessment | null;
+}
+
+export interface RiskDashboard {
+  summary: { total: number; high: number; moderate: number; low: number; unassessed: number };
+  highRiskStudents: {
+    student: User;
+    riskScore: number;
+    riskLevel: RiskLevel;
+    factors: ContributingFactor[];
+    attendancePercentage?: number;
+    internalMarksAverage?: number;
+    lastAssessed: string;
+  }[];
+  allStudents: {
+    student: User;
+    riskLevel: RiskLevel;
+    riskScore: number;
+    lastAssessed?: string;
+  }[];
+}
 
 export type VisitorCategory = 'guest' | 'vendor' | 'parent' | 'official' | 'delivery' | 'interview' | 'contractor' | 'other';
 export type VisitStatus = 'pending' | 'approved' | 'rejected' | 'checked-in' | 'checked-out' | 'expired' | 'cancelled';

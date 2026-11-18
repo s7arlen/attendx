@@ -47,11 +47,13 @@ const visitorSubItems: NavItem[] = [
 ]
 
 const teacherNavItems: NavItem[] = [
-  { label: 'Dashboard',   icon: LayoutDashboard, path: '/teacher' },
-  { label: 'My Subjects', icon: BookOpen,        path: '/teacher/subjects' },
-  { label: 'Timetable',   icon: Clock,           path: '/teacher/timetable' },
-  { label: 'Sessions',    icon: QrCode,          path: '/teacher/sessions' },
-  { label: 'Analytics',   icon: BarChart3,       path: '/teacher/analytics' },
+  { label: 'Dashboard',         icon: LayoutDashboard, path: '/teacher' },
+  { label: 'My Subjects',       icon: BookOpen,        path: '/teacher/subjects' },
+  { label: 'Assessments',       icon: ClipboardCheck,  path: '/teacher/assessments' },
+  { label: 'Early Warning',     icon: AlertTriangle,   path: '/teacher/risk' },
+  { label: 'Timetable',         icon: Clock,           path: '/teacher/timetable' },
+  { label: 'Sessions',          icon: QrCode,          path: '/teacher/sessions' },
+  { label: 'Analytics',         icon: BarChart3,       path: '/teacher/analytics' },
   // Visitor
   { label: 'VISITOR MANAGEMENT', isHeader: true },
   { label: 'My Requests',   icon: ClipboardCheck,  path: '/visitor/my-requests', group: 'visitor' },
@@ -70,12 +72,13 @@ const securityNavItems: NavItem[] = [
 ]
 
 const studentNavItems: NavItem[] = [
-  { label: 'Dashboard',   icon: LayoutDashboard, path: '/student' },
-  { label: 'Scan QR',     icon: ScanLine,        path: '/student/scan' },
-  { label: 'My Subjects', icon: BookOpen,        path: '/student/subjects' },
-  { label: 'Attendance',  icon: UserCheck,       path: '/student/attendance' },
-  { label: 'Analytics',   icon: BarChart3,       path: '/student/analytics' },
-  { label: 'Profile',     icon: UserCircle,      path: '/student/profile' },
+  { label: 'Dashboard',         icon: LayoutDashboard, path: '/student' },
+  { label: 'Scan QR',           icon: ScanLine,        path: '/student/scan' },
+  { label: 'My Subjects',       icon: BookOpen,        path: '/student/subjects' },
+  { label: 'Attendance',        icon: UserCheck,       path: '/student/attendance' },
+  { label: 'Academic Profile',  icon: GraduationCap,   path: '/student/academic' },
+  { label: 'Analytics',         icon: BarChart3,       path: '/student/analytics' },
+  { label: 'Profile',           icon: UserCircle,      path: '/student/profile' },
 ]
 
 // Root paths — dashboard item should only be active on exact match

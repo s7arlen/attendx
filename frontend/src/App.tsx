@@ -37,6 +37,8 @@ import TeacherSessionDetailPage from '@/pages/teacher/TeacherSessionDetailPage'
 import TeacherSubjectAttendancePage from '@/pages/teacher/TeacherSubjectAttendancePage'
 import TeacherAnalyticsPage from '@/pages/teacher/TeacherAnalyticsPage'
 import TeacherProfilePage from '@/pages/teacher/TeacherProfilePage'
+import RiskDashboardPage from '@/pages/teacher/RiskDashboardPage'
+import AssessmentsPage from '@/pages/teacher/AssessmentsPage'
 
 // Student Pages
 import StudentDashboard from '@/pages/student/StudentDashboard'
@@ -45,6 +47,7 @@ import StudentSubjectsPage from '@/pages/student/StudentSubjectsPage'
 import StudentAttendancePage from '@/pages/student/StudentAttendancePage'
 import StudentAnalyticsPage from '@/pages/student/StudentAnalyticsPage'
 import StudentProfilePage from '@/pages/student/StudentProfilePage'
+import AcademicProfilePage from '@/pages/student/AcademicProfilePage'
 
 // Visitor Pages
 import VisitorDashboard from '@/pages/visitor/VisitorDashboard'
@@ -140,6 +143,8 @@ export default function App() {
             <Route path="sessions/:sessionId" element={<TeacherSessionDetailPage />} />
             <Route path="analytics" element={<TeacherAnalyticsPage />} />
             <Route path="profile" element={<TeacherProfilePage />} />
+            <Route path="assessments" element={<AssessmentsPage />} />
+            <Route path="risk" element={<RiskDashboardPage />} />
           </Route>
 
           {/* Student */}
@@ -150,6 +155,7 @@ export default function App() {
             <Route path="attendance" element={<StudentAttendancePage />} />
             <Route path="analytics" element={<StudentAnalyticsPage />} />
             <Route path="profile" element={<StudentProfilePage />} />
+            <Route path="academic" element={<AcademicProfilePage />} />
           </Route>
 
           {/* Visitor Management — accessible by admin, security, teacher */}
