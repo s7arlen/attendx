@@ -7,7 +7,7 @@ import {
   ShieldCheck, LogOut, UserCheck, Clock, UserCircle,
   Shield, AlertTriangle, Building2, CalendarDays,
   UserPlus, ClipboardCheck, QrCode as QrCodeIcon, LogIn, BarChart2,
-  ChevronDown, Brain,
+  ChevronDown, Brain, Zap, WifiOff,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/authStore'
@@ -48,19 +48,19 @@ const visitorSubItems: NavItem[] = [
 ]
 
 const teacherNavItems: NavItem[] = [
-  { label: 'Dashboard',      icon: LayoutDashboard, path: '/teacher' },
-  { label: 'My Subjects',    icon: BookOpen,        path: '/teacher/subjects' },
-  { label: 'Assessments',    icon: ClipboardCheck,  path: '/teacher/assessments' },
-  { label: 'Early Warning',  icon: AlertTriangle,   path: '/teacher/risk' },
-  { label: 'Interventions',  icon: Users,           path: '/teacher/interventions' },
-  { label: 'What-If Sim',    icon: BarChart3,       path: '/teacher/whatif' },
-  { label: 'Timetable',      icon: Clock,           path: '/teacher/timetable' },
-  { label: 'Sessions',       icon: QrCode,          path: '/teacher/sessions' },
-  { label: 'Analytics',      icon: BarChart2,       path: '/teacher/analytics' },
+  { label: 'Dashboard',         icon: LayoutDashboard, path: '/teacher' },
+  { label: 'My Subjects',       icon: BookOpen,        path: '/teacher/subjects' },
+  { label: 'Smart Timetable',   icon: Zap,             path: '/teacher/smart-timetable' },
+  { label: 'Assessments',       icon: ClipboardCheck,  path: '/teacher/assessments' },
+  { label: 'Early Warning',     icon: AlertTriangle,   path: '/teacher/risk' },
+  { label: 'Interventions',     icon: Users,           path: '/teacher/interventions' },
+  { label: 'What-If Sim',       icon: BarChart3,       path: '/teacher/whatif' },
+  { label: 'Sessions',          icon: QrCode,          path: '/teacher/sessions' },
+  { label: 'Analytics',         icon: BarChart2,       path: '/teacher/analytics' },
   { label: 'VISITOR MANAGEMENT', isHeader: true },
-  { label: 'My Requests',    icon: ClipboardCheck,  path: '/visitor/my-requests', group: 'visitor' },
-  { label: 'Events',         icon: CalendarDays,    path: '/visitor/events',      group: 'visitor' },
-  { label: 'Profile',        icon: UserCircle,      path: '/teacher/profile' },
+  { label: 'My Requests',       icon: ClipboardCheck,  path: '/visitor/my-requests', group: 'visitor' },
+  { label: 'Events',            icon: CalendarDays,    path: '/visitor/events',      group: 'visitor' },
+  { label: 'Profile',           icon: UserCircle,      path: '/teacher/profile' },
 ]
 
 const securityNavItems: NavItem[] = [
@@ -76,6 +76,7 @@ const securityNavItems: NavItem[] = [
 const studentNavItems: NavItem[] = [
   { label: 'Dashboard',         icon: LayoutDashboard, path: '/student' },
   { label: 'Scan QR',           icon: ScanLine,        path: '/student/scan' },
+  { label: 'Offline Attendance',icon: WifiOff,         path: '/student/offline' },
   { label: 'My Subjects',       icon: BookOpen,        path: '/student/subjects' },
   { label: 'Attendance',        icon: UserCheck,       path: '/student/attendance' },
   { label: 'Academic Profile',  icon: GraduationCap,   path: '/student/academic' },

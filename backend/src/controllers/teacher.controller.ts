@@ -1,4 +1,4 @@
-import { Response } from 'express';
+﻿import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { Subject } from '../models/Subject.model';
 import { Timetable } from '../models/Timetable.model';
@@ -109,3 +109,4 @@ export const getSubjectAttendance = async (req: AuthRequest, res: Response): Pro
     res.status(500).json({ success: false, message: error.message });
   }
 };
+

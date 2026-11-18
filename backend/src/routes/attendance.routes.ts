@@ -5,6 +5,7 @@ import {
   startSession, endSession, getLiveSession, getTeacherSessions, refreshQR,
   verifyAttendance, getAttendanceHistory, getAttendanceSummary,
   validateQR, findSessionByCode, raiseDispute, getActiveSessionsForStudent,
+  syncOfflineAttendance,
 } from '../controllers/attendance.controller';
 
 const router = Router();
@@ -22,6 +23,7 @@ router.get('/active', authorize('student'), getActiveSessionsForStudent);
 router.get('/session/:sessionCode', authorize('student', 'admin'), findSessionByCode);
 router.post('/validate-qr', authorize('student', 'admin'), validateQR);
 router.post('/verify', authorize('student', 'admin'), attendanceLimiter, verifyAttendance);
+router.post('/sync-offline', authorize('student', 'admin'), syncOfflineAttendance);
 router.post('/dispute/:recordId', authorize('student'), raiseDispute);
 router.get('/history', authorize('student', 'admin'), getAttendanceHistory);
 router.get('/summary', authorize('student', 'admin'), getAttendanceSummary);

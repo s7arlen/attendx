@@ -1,4 +1,4 @@
-import { Response } from 'express';
+﻿import { Response } from 'express';
 import mongoose from 'mongoose';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { AttendanceSession } from '../models/AttendanceSession.model';
@@ -10,7 +10,7 @@ import { createAuditLog, getClientIp } from '../utils/auditLogger';
 import { emitToSession } from '../config/socket';
 import { Server } from 'socket.io';
 
-// ── TEACHER: START SESSION ──────────────────────────────────
+// â”€â”€ TEACHER: START SESSION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const startSession = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { subjectId, duration = 15 } = req.body;
@@ -55,7 +55,7 @@ export const startSession = async (req: AuthRequest, res: Response): Promise<voi
     const expiryTime = new Date(startTime.getTime() + duration * 60 * 1000);
 
     const session = await AttendanceSession.create({
-      _id: newId,          // ObjectId — no more BSONError
+      _id: newId,          // ObjectId â€” no more BSONError
       subjectId,
       teacherId: req.user!.userId,
       sessionCode,
@@ -79,7 +79,7 @@ export const startSession = async (req: AuthRequest, res: Response): Promise<voi
   }
 };
 
-// ── TEACHER: REFRESH QR TOKEN ──────────────────────────────
+// â”€â”€ TEACHER: REFRESH QR TOKEN â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const refreshQR = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { sessionId } = req.params;
@@ -102,7 +102,7 @@ export const refreshQR = async (req: AuthRequest, res: Response): Promise<void> 
       return;
     }
 
-    // Generate fresh token and QR image — old token is now invalid
+    // Generate fresh token and QR image â€” old token is now invalid
     const { secureToken, qrCodeData } = await generateFreshQR(
       sessionId,
       (session.subjectId as any)._id?.toString() ?? session.subjectId.toString()
@@ -130,7 +130,7 @@ export const refreshQR = async (req: AuthRequest, res: Response): Promise<void> 
   }
 };
 
-// ── TEACHER: END SESSION ──────────────────────────────────
+// â”€â”€ TEACHER: END SESSION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const endSession = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { sessionId } = req.params;
@@ -171,7 +171,7 @@ export const endSession = async (req: AuthRequest, res: Response): Promise<void>
   }
 };
 
-// ── TEACHER: GET LIVE SESSION ──────────────────────────────
+// â”€â”€ TEACHER: GET LIVE SESSION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const getLiveSession = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { sessionId } = req.params;
@@ -203,7 +203,7 @@ export const getLiveSession = async (req: AuthRequest, res: Response): Promise<v
   }
 };
 
-// ── TEACHER: GET MY SESSIONS ──────────────────────────────
+// â”€â”€ TEACHER: GET MY SESSIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const getTeacherSessions = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const sessions = await AttendanceSession.find({ teacherId: req.user!.userId })
@@ -217,7 +217,7 @@ export const getTeacherSessions = async (req: AuthRequest, res: Response): Promi
   }
 };
 
-// ── STUDENT: VERIFY ATTENDANCE ──────────────────────────────
+// â”€â”€ STUDENT: VERIFY ATTENDANCE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const verifyAttendance = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { sessionId, subjectId, secureToken, passwordCode } = req.body;
@@ -332,7 +332,7 @@ export const verifyAttendance = async (req: AuthRequest, res: Response): Promise
   }
 };
 
-// ── STUDENT: ATTENDANCE HISTORY ──────────────────────────────
+// â”€â”€ STUDENT: ATTENDANCE HISTORY â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const getAttendanceHistory = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { subjectId, page = 1, limit = 20 } = req.query;
@@ -359,7 +359,7 @@ export const getAttendanceHistory = async (req: AuthRequest, res: Response): Pro
   }
 };
 
-// ── STUDENT: ATTENDANCE SUMMARY ──────────────────────────────
+// â”€â”€ STUDENT: ATTENDANCE SUMMARY â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const getAttendanceSummary = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const studentId = req.user!.userId;
@@ -392,7 +392,7 @@ export const getAttendanceSummary = async (req: AuthRequest, res: Response): Pro
   }
 };
 
-// ── STUDENT: FIND SESSION BY CODE ──────────────────────────────
+// â”€â”€ STUDENT: FIND SESSION BY CODE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const findSessionByCode = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { sessionCode } = req.params;
@@ -438,7 +438,7 @@ export const findSessionByCode = async (req: AuthRequest, res: Response): Promis
   }
 };
 
-// ── STUDENT: RAISE DISPUTE ──────────────────────────────
+// â”€â”€ STUDENT: RAISE DISPUTE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const raiseDispute = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { recordId } = req.params;
@@ -481,7 +481,7 @@ export const raiseDispute = async (req: AuthRequest, res: Response): Promise<voi
   }
 };
 
-// ── STUDENT: GET ACTIVE SESSIONS FOR MY SUBJECTS ──────────────────────────────
+// â”€â”€ STUDENT: GET ACTIVE SESSIONS FOR MY SUBJECTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const getActiveSessionsForStudent = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const student = await User.findById(req.user!.userId);
@@ -541,5 +541,85 @@ export const validateQR = async (req: AuthRequest, res: Response): Promise<void>
     });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ── OFFLINE ATTENDANCE SYNC ───────────────────────────────────
+export const syncOfflineAttendance = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { records } = req.body;
+    // records: [{ sessionId, subjectId, secureToken, passwordCode, timestamp }]
+    if (!Array.isArray(records) || records.length === 0) {
+      res.status(400).json({ success: false, message: 'records array required' });
+      return;
+    }
+
+    const results: { sessionId: string; status: string; message: string }[] = [];
+
+    for (const record of records) {
+      try {
+        const { sessionId, subjectId, secureToken, passwordCode, timestamp } = record;
+
+        // Find session
+        const session = await AttendanceSession.findById(sessionId)
+          .populate('subjectId', 'subjectName subjectCode department year section');
+
+        if (!session) {
+          results.push({ sessionId, status: 'failed', message: 'Session not found' });
+          continue;
+        }
+
+        // Allow syncing for sessions that ended within last 24 hours
+        const sessionAge = Date.now() - new Date(session.startTime).getTime();
+        if (sessionAge > 24 * 60 * 60 * 1000) {
+          results.push({ sessionId, status: 'failed', message: 'Session too old (>24h) to sync' });
+          continue;
+        }
+
+        // Check already marked
+        const existing = await AttendanceRecord.findOne({
+          sessionId,
+          studentId: req.user!.userId,
+        });
+        if (existing) {
+          results.push({ sessionId, status: 'duplicate', message: 'Already marked' });
+          continue;
+        }
+
+        // Verify password code
+        if (session.passwordCode !== passwordCode?.toUpperCase()) {
+          results.push({ sessionId, status: 'failed', message: 'Invalid password code' });
+          continue;
+        }
+
+        // Create offline record
+        await AttendanceRecord.create({
+          studentId: req.user!.userId,
+          sessionId,
+          subjectId: session.subjectId,
+          timestamp: timestamp ? new Date(timestamp) : new Date(),
+          verificationStatus: 'verified',
+          verificationMethod: 'offline_sync',
+        });
+
+        session.totalPresent += 1;
+        await session.save();
+
+        results.push({ sessionId, status: 'synced', message: 'Attendance synced successfully' });
+      } catch (err: any) {
+        results.push({ sessionId: record.sessionId, status: 'failed', message: err.message });
+      }
+    }
+
+    const synced = results.filter(r => r.status === 'synced').length;
+    const failed = results.filter(r => r.status === 'failed').length;
+
+    res.json({
+      success: true,
+      message: `${synced} synced, ${failed} failed`,
+      data: { results, synced, failed },
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
   }
 };

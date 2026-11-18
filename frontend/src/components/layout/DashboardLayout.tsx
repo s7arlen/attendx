@@ -19,6 +19,7 @@ const pageTitles: Record<string, string> = {
   '/len-admin/profile':         'My Profile',
   '/teacher':                   'Teacher Dashboard',
   '/teacher/subjects':          'My Subjects',
+  '/teacher/smart-timetable':   'Smart Timetable',
   '/teacher/assessments':       'Assessments & Marks',
   '/teacher/risk':              'Early Warning Dashboard',
   '/teacher/interventions':     'Interventions',
@@ -32,6 +33,7 @@ const pageTitles: Record<string, string> = {
   '/student/subjects':          'My Subjects',
   '/student/attendance':        'Attendance History',
   '/student/academic':          'Academic Profile',
+  '/student/offline':           'Offline Attendance',
   '/student/analytics':         'Analytics',
   '/student/profile':           'My Profile & Security',
 }

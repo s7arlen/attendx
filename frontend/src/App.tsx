@@ -42,6 +42,7 @@ import RiskDashboardPage from '@/pages/teacher/RiskDashboardPage'
 import AssessmentsPage from '@/pages/teacher/AssessmentsPage'
 import WhatIfPage from '@/pages/teacher/WhatIfPage'
 import InterventionsPage from '@/pages/teacher/InterventionsPage'
+import SmartTimetablePage from '@/pages/teacher/SmartTimetablePage'
 
 // Student Pages
 import StudentDashboard from '@/pages/student/StudentDashboard'
@@ -51,6 +52,7 @@ import StudentAttendancePage from '@/pages/student/StudentAttendancePage'
 import StudentAnalyticsPage from '@/pages/student/StudentAnalyticsPage'
 import StudentProfilePage from '@/pages/student/StudentProfilePage'
 import AcademicProfilePage from '@/pages/student/AcademicProfilePage'
+import OfflineQRPage from '@/pages/student/OfflineQRPage'
 
 // Visitor Pages
 import VisitorDashboard from '@/pages/visitor/VisitorDashboard'
@@ -151,6 +153,7 @@ export default function App() {
             <Route path="risk" element={<RiskDashboardPage />} />
             <Route path="whatif" element={<WhatIfPage />} />
             <Route path="interventions" element={<InterventionsPage />} />
+            <Route path="smart-timetable" element={<SmartTimetablePage />} />
           </Route>
 
           {/* Student */}
@@ -162,6 +165,7 @@ export default function App() {
             <Route path="analytics" element={<StudentAnalyticsPage />} />
             <Route path="profile" element={<StudentProfilePage />} />
             <Route path="academic" element={<AcademicProfilePage />} />
+            <Route path="offline" element={<OfflineQRPage />} />
           </Route>
 
           {/* Visitor Management — accessible by admin, security, teacher */}

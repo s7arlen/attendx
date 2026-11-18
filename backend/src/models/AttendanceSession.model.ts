@@ -8,13 +8,14 @@ export interface IAttendanceSession extends Document {
   teacherId: mongoose.Types.ObjectId;
   sessionCode: string;
   qrToken: string;
-  qrCodeData: string;  // Base64 QR image
+  qrCodeData: string;
   passwordCode: string;
   startTime: Date;
   expiryTime: Date;
   status: SessionStatus;
-  duration: number; // in minutes
+  duration: number;
   totalPresent: number;
+  autoCreated: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -32,6 +33,7 @@ const AttendanceSessionSchema = new Schema<IAttendanceSession>(
     status: { type: String, enum: ['active', 'ended', 'expired'], default: 'active' },
     duration: { type: Number, default: 15 },
     totalPresent: { type: Number, default: 0 },
+    autoCreated: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

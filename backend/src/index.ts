@@ -22,6 +22,7 @@ import visitorRoutes from './routes/visitor.routes';
 import academicRoutes from './routes/academic.routes';
 import { errorHandler } from './middleware/errorHandler';
 import { startAttendanceAlertJob } from './jobs/attendanceAlert';
+import { startAutoSessionJob } from './jobs/autoSession';
 
 dotenv.config();
 
@@ -97,6 +98,19 @@ app.post('/admin-trigger/attendance-alert', async (req, res) => {
   res.json({ success: true, message: 'Attendance alert job triggered manually' });
 });
 
+// Manual trigger for auto sessions (admin only — for testing)
+app.post('/admin-trigger/auto-session', async (req, res) => {
+  const secret = req.headers['x-trigger-secret'];
+  if (secret !== process.env.JWT_SECRET) {
+    res.status(401).json({ success: false, message: 'Unauthorized' });
+    return;
+  }
+  const { autoStartSessions, autoEndSessions } = await import('./jobs/autoSession');
+  await autoStartSessions();
+  await autoEndSessions();
+  res.json({ success: true, message: 'Auto session check triggered manually' });
+});
+
 // Error handler
 app.use(errorHandler);
 
@@ -112,6 +126,7 @@ const startServer = async () => {
 
   // Start cron jobs
   startAttendanceAlertJob();
+  startAutoSessionJob();
 };
 
 startServer();
