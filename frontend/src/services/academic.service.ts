@@ -67,7 +67,18 @@ export const academicService = {
     return res.data.data.assessment as RiskAssessment;
   },
 
-  // ── Interventions ──────────────────────────────────────────
+  // ── ML Info ────────────────────────────────────────────────
+  getMLInfo: async () => {
+    const res = await api.get('/academic/ml/info');
+    return res.data.data as { mlAvailable: boolean; modelInfo: any };
+  },
+
+  // ── What-If ────────────────────────────────────────────────
+  whatIfSimulate: async (data: { studentId: string; attendancePercentage?: number; internalMarksAverage?: number; quizAverage?: number; assignmentCompletion?: number }) => {
+    const res = await api.post('/academic/whatif', data);
+    return res.data.data;
+  },
+
   createIntervention: async (data: Partial<Intervention>) => {
     const res = await api.post('/academic/interventions', data);
     return res.data.data.intervention as Intervention;

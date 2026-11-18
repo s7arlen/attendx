@@ -8,6 +8,7 @@ import { User } from '../models/User.model';
 import { AttendanceRecord } from '../models/AttendanceRecord.model';
 import { AttendanceSession } from '../models/AttendanceSession.model';
 import { RiskAssessment } from '../models/RiskAssessment.model';
+import { mlPredict } from '../utils/mlClient';
 
 // ── ASSESSMENTS ──────────────────────────────────────────────
 
@@ -330,49 +331,67 @@ export async function triggerRiskAssessment(studentId: string): Promise<void> {
       warnings.push('No assignment data');
     }
 
-    // ── RULE-BASED RISK SCORING ──────────────────────────────
-    const factors: { factor: string; value: number | string; impact: 'LOW' | 'MEDIUM' | 'HIGH' }[] = [];
-    let score = 0;
-    let dataPoints = 0;
+    // ── TRY ML MODEL FIRST ────────────────────────────────────
+    const mlResult = await mlPredict({
+      studentId,
+      attendancePercentage: attendancePct ?? undefined,
+      internalMarksAverage: internalAvg ?? undefined,
+      quizAverage: quizAvg ?? undefined,
+      assignmentCompletion: assignmentRate ?? undefined,
+    });
 
-    if (attendancePct !== null) {
-      dataPoints++;
-      if (attendancePct < 60) { score += 40; factors.push({ factor: 'Attendance', value: attendancePct, impact: 'HIGH' }); }
-      else if (attendancePct < 75) { score += 25; factors.push({ factor: 'Attendance', value: attendancePct, impact: 'HIGH' }); }
-      else if (attendancePct < 85) { score += 10; factors.push({ factor: 'Attendance', value: attendancePct, impact: 'MEDIUM' }); }
+    let riskLevel: 'LOW' | 'MODERATE' | 'HIGH';
+    let riskScore: number;
+    let factors: { factor: string; value: number | string; impact: 'LOW' | 'MEDIUM' | 'HIGH' }[];
+    let recommendations: string[];
+    let modelVersion: string;
+    let assessmentMethod: 'RULE_BASED' | 'ML_MODEL';
+
+    if (mlResult) {
+      // Use ML prediction
+      riskLevel        = mlResult.riskLevel;
+      riskScore        = mlResult.riskScore;
+      factors          = mlResult.contributingFactors.map(f => ({ ...f, impact: f.impact as 'LOW' | 'MEDIUM' | 'HIGH' }));
+      recommendations  = mlResult.recommendations;
+      modelVersion     = mlResult.modelVersion;
+      assessmentMethod = 'ML_MODEL';
+      warnings.push(...mlResult.dataWarnings);
+    } else {
+      // ── RULE-BASED FALLBACK ────────────────────────────────
+      factors = [];
+      let score = 0;
+
+      if (attendancePct !== null) {
+        if (attendancePct < 60) { score += 40; factors.push({ factor: 'Attendance', value: attendancePct, impact: 'HIGH' }); }
+        else if (attendancePct < 75) { score += 25; factors.push({ factor: 'Attendance', value: attendancePct, impact: 'HIGH' }); }
+        else if (attendancePct < 85) { score += 10; factors.push({ factor: 'Attendance', value: attendancePct, impact: 'MEDIUM' }); }
+      }
+      if (internalAvg !== null) {
+        if (internalAvg < 40) { score += 35; factors.push({ factor: 'Internal Marks', value: internalAvg, impact: 'HIGH' }); }
+        else if (internalAvg < 55) { score += 20; factors.push({ factor: 'Internal Marks', value: internalAvg, impact: 'HIGH' }); }
+        else if (internalAvg < 70) { score += 8;  factors.push({ factor: 'Internal Marks', value: internalAvg, impact: 'MEDIUM' }); }
+      }
+      if (quizAvg !== null) {
+        if (quizAvg < 40) { score += 15; factors.push({ factor: 'Quiz Average', value: quizAvg, impact: 'MEDIUM' }); }
+        else if (quizAvg < 55) { score += 8; factors.push({ factor: 'Quiz Average', value: quizAvg, impact: 'LOW' }); }
+      }
+      if (assignmentRate !== null) {
+        if (assignmentRate < 50) { score += 10; factors.push({ factor: 'Assignment Completion', value: assignmentRate, impact: 'MEDIUM' }); }
+        else if (assignmentRate < 75) { score += 5; factors.push({ factor: 'Assignment Completion', value: assignmentRate, impact: 'LOW' }); }
+      }
+
+      riskScore = Math.min(score, 100);
+      riskLevel = riskScore >= 50 ? 'HIGH' : riskScore >= 25 ? 'MODERATE' : 'LOW';
+      modelVersion = '1.0-rule-based';
+      assessmentMethod = 'RULE_BASED';
+
+      recommendations = [];
+      if (attendancePct !== null && attendancePct < 75) recommendations.push('Attend all upcoming classes to improve attendance percentage');
+      if (internalAvg !== null && internalAvg < 55) recommendations.push('Schedule extra study sessions and seek faculty mentoring for weak subjects');
+      if (quizAvg !== null && quizAvg < 55) recommendations.push('Practice topic-wise quizzes to improve understanding');
+      if (assignmentRate !== null && assignmentRate < 75) recommendations.push('Complete all pending assignments before deadlines');
+      if (riskLevel === 'LOW') recommendations.push('Keep up the good work and maintain your current performance');
     }
-
-    if (internalAvg !== null) {
-      dataPoints++;
-      if (internalAvg < 40) { score += 35; factors.push({ factor: 'Internal Marks', value: internalAvg, impact: 'HIGH' }); }
-      else if (internalAvg < 55) { score += 20; factors.push({ factor: 'Internal Marks', value: internalAvg, impact: 'HIGH' }); }
-      else if (internalAvg < 70) { score += 8; factors.push({ factor: 'Internal Marks', value: internalAvg, impact: 'MEDIUM' }); }
-    }
-
-    if (quizAvg !== null) {
-      dataPoints++;
-      if (quizAvg < 40) { score += 15; factors.push({ factor: 'Quiz Average', value: quizAvg, impact: 'MEDIUM' }); }
-      else if (quizAvg < 55) { score += 8; factors.push({ factor: 'Quiz Average', value: quizAvg, impact: 'LOW' }); }
-    }
-
-    if (assignmentRate !== null) {
-      dataPoints++;
-      if (assignmentRate < 50) { score += 10; factors.push({ factor: 'Assignment Completion', value: assignmentRate, impact: 'MEDIUM' }); }
-      else if (assignmentRate < 75) { score += 5; factors.push({ factor: 'Assignment Completion', value: assignmentRate, impact: 'LOW' }); }
-    }
-
-    if (dataPoints === 0) return; // No data yet — skip
-
-    const riskLevel: 'LOW' | 'MODERATE' | 'HIGH' =
-      score >= 50 ? 'HIGH' : score >= 25 ? 'MODERATE' : 'LOW';
-
-    // Build recommendations
-    const recommendations: string[] = [];
-    if (attendancePct !== null && attendancePct < 75) recommendations.push('Attend all upcoming classes to improve attendance percentage');
-    if (internalAvg !== null && internalAvg < 55) recommendations.push('Schedule extra study sessions and seek faculty mentoring for weak subjects');
-    if (quizAvg !== null && quizAvg < 55) recommendations.push('Practice topic-wise quizzes to improve understanding');
-    if (assignmentRate !== null && assignmentRate < 75) recommendations.push('Complete all pending assignments before deadlines');
-    if (riskLevel === 'LOW') recommendations.push('Keep up the good work and maintain your current performance');
 
     // Get previous risk
     const prev = await RiskAssessment.findOne({ studentId }).sort({ createdAt: -1 });
@@ -380,20 +399,20 @@ export async function triggerRiskAssessment(studentId: string): Promise<void> {
     await RiskAssessment.create({
       studentId,
       riskLevel,
-      assessmentMethod: 'RULE_BASED',
-      riskScore: Math.min(score, 100),
+      assessmentMethod,
+      riskScore: Math.min(riskScore, 100),
       contributingFactors: factors,
       recommendations,
       attendancePercentage: attendancePct ?? undefined,
       internalMarksAverage: internalAvg ?? undefined,
       assignmentCompletionRate: assignmentRate ?? undefined,
       quizAverage: quizAvg ?? undefined,
-      modelVersion: '1.0-rule-based',
+      modelVersion,
       dataWarnings: warnings,
       previousRiskLevel: prev?.riskLevel,
     });
 
-    console.log(`[risk] Student ${studentId}: ${riskLevel} (score=${score})`);
+    console.log(`[risk] Student ${studentId}: ${riskLevel} (score=${riskScore})`);
   } catch (err) {
     console.error('[risk] Error:', err);
   }
@@ -484,7 +503,73 @@ export const getRiskDashboard = async (req: AuthRequest, res: Response): Promise
   } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
 };
 
-// ── INTERVENTIONS ─────────────────────────────────────────────
+// ── ML Service info ───────────────────────────────────────────
+export const getMLInfo = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { mlServiceHealthy, mlModelInfo } = await import('../utils/mlClient');
+    const healthy = await mlServiceHealthy();
+    const info = healthy ? await mlModelInfo() : null;
+    res.json({ success: true, data: { mlAvailable: healthy, modelInfo: info } });
+  } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
+};
+
+// ── What-If Simulator ─────────────────────────────────────────
+export const whatIfSimulate = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { studentId, attendancePercentage, internalMarksAverage, quizAverage, assignmentCompletion } = req.body;
+
+    // Security: students can only simulate for themselves
+    if (req.user!.role === 'student' && studentId !== req.user!.userId) {
+      res.status(403).json({ success: false, message: 'Access denied' }); return;
+    }
+
+    // Get current actual risk
+    const currentRisk = await RiskAssessment.findOne({ studentId }).sort({ createdAt: -1 });
+
+    // Run simulation (never saves to DB)
+    const { mlPredict: mlP } = await import('../utils/mlClient');
+    const simResult = await mlP({ studentId: 'simulation', attendancePercentage, internalMarksAverage, quizAverage, assignmentCompletion });
+
+    // Rule-based fallback for simulation
+    let simRisk = simResult;
+    if (!simResult) {
+      let score = 0;
+      const factors: any[] = [];
+      if (attendancePercentage != null) {
+        if (attendancePercentage < 60) score += 40;
+        else if (attendancePercentage < 75) score += 25;
+        else if (attendancePercentage < 85) score += 10;
+        factors.push({ factor: 'Attendance', value: attendancePercentage, impact: attendancePercentage < 75 ? 'HIGH' : 'MEDIUM' });
+      }
+      if (internalMarksAverage != null) {
+        if (internalMarksAverage < 40) score += 35;
+        else if (internalMarksAverage < 55) score += 20;
+        factors.push({ factor: 'Internal Marks', value: internalMarksAverage, impact: internalMarksAverage < 55 ? 'HIGH' : 'MEDIUM' });
+      }
+      simRisk = {
+        studentId: 'simulation',
+        riskLevel: score >= 50 ? 'HIGH' : score >= 25 ? 'MODERATE' : 'LOW',
+        assessmentType: 'RULE_BASED',
+        riskScore: Math.min(score, 100),
+        riskProbability: null,
+        contributingFactors: factors,
+        recommendations: [],
+        dataWarnings: ['Simulation using rule-based engine'],
+        modelVersion: '1.0-rule-based',
+        predictionTimestamp: new Date().toISOString(),
+      } as any;
+    }
+
+    res.json({
+      success: true,
+      data: {
+        simulation: { ...simRisk, note: 'SIMULATED — not saved to database' },
+        current: currentRisk ? { riskLevel: currentRisk.riskLevel, riskScore: currentRisk.riskScore } : null,
+        changed: currentRisk ? currentRisk.riskLevel !== simRisk?.riskLevel : false,
+      },
+    });
+  } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
+};
 
 export const createIntervention = async (req: AuthRequest, res: Response): Promise<void> => {
   try {

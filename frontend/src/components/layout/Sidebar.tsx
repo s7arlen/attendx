@@ -7,7 +7,7 @@ import {
   ShieldCheck, LogOut, UserCheck, Clock, UserCircle,
   Shield, AlertTriangle, Building2, CalendarDays,
   UserPlus, ClipboardCheck, QrCode as QrCodeIcon, LogIn, BarChart2,
-  ChevronDown,
+  ChevronDown, Brain,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/authStore'
@@ -21,16 +21,17 @@ interface NavItem {
 }
 
 const adminNavItems: NavItem[] = [
-  { label: 'Dashboard',  icon: LayoutDashboard, path: '/len-admin' },
-  { label: 'Teachers',   icon: Users,            path: '/len-admin/teachers' },
-  { label: 'Students',   icon: GraduationCap,    path: '/len-admin/students' },
-  { label: 'Subjects',   icon: BookOpen,         path: '/len-admin/subjects' },
-  { label: 'Timetable',  icon: Calendar,         path: '/len-admin/timetable' },
-  { label: 'Analytics',  icon: BarChart3,        path: '/len-admin/analytics' },
-  { label: 'Reports',    icon: History,          path: '/len-admin/reports' },
-  { label: 'Disputes',   icon: AlertTriangle,    path: '/len-admin/disputes' },
-  { label: 'Audit Logs', icon: Shield,           path: '/len-admin/audit-logs' },
-  { label: 'Profile',    icon: UserCircle,       path: '/len-admin/profile' },
+  { label: 'Dashboard',      icon: LayoutDashboard, path: '/len-admin' },
+  { label: 'Teachers',       icon: Users,            path: '/len-admin/teachers' },
+  { label: 'Students',       icon: GraduationCap,    path: '/len-admin/students' },
+  { label: 'Subjects',       icon: BookOpen,         path: '/len-admin/subjects' },
+  { label: 'Timetable',      icon: Calendar,         path: '/len-admin/timetable' },
+  { label: 'AI Risk Analytics', icon: Brain,         path: '/len-admin/risk-analytics' },
+  { label: 'Analytics',      icon: BarChart3,        path: '/len-admin/analytics' },
+  { label: 'Reports',        icon: History,          path: '/len-admin/reports' },
+  { label: 'Disputes',       icon: AlertTriangle,    path: '/len-admin/disputes' },
+  { label: 'Audit Logs',     icon: Shield,           path: '/len-admin/audit-logs' },
+  { label: 'Profile',        icon: UserCircle,       path: '/len-admin/profile' },
 ]
 
 const visitorSubItems: NavItem[] = [
@@ -47,18 +48,19 @@ const visitorSubItems: NavItem[] = [
 ]
 
 const teacherNavItems: NavItem[] = [
-  { label: 'Dashboard',         icon: LayoutDashboard, path: '/teacher' },
-  { label: 'My Subjects',       icon: BookOpen,        path: '/teacher/subjects' },
-  { label: 'Assessments',       icon: ClipboardCheck,  path: '/teacher/assessments' },
-  { label: 'Early Warning',     icon: AlertTriangle,   path: '/teacher/risk' },
-  { label: 'Timetable',         icon: Clock,           path: '/teacher/timetable' },
-  { label: 'Sessions',          icon: QrCode,          path: '/teacher/sessions' },
-  { label: 'Analytics',         icon: BarChart3,       path: '/teacher/analytics' },
-  // Visitor
+  { label: 'Dashboard',      icon: LayoutDashboard, path: '/teacher' },
+  { label: 'My Subjects',    icon: BookOpen,        path: '/teacher/subjects' },
+  { label: 'Assessments',    icon: ClipboardCheck,  path: '/teacher/assessments' },
+  { label: 'Early Warning',  icon: AlertTriangle,   path: '/teacher/risk' },
+  { label: 'Interventions',  icon: Users,           path: '/teacher/interventions' },
+  { label: 'What-If Sim',    icon: BarChart3,       path: '/teacher/whatif' },
+  { label: 'Timetable',      icon: Clock,           path: '/teacher/timetable' },
+  { label: 'Sessions',       icon: QrCode,          path: '/teacher/sessions' },
+  { label: 'Analytics',      icon: BarChart2,       path: '/teacher/analytics' },
   { label: 'VISITOR MANAGEMENT', isHeader: true },
-  { label: 'My Requests',   icon: ClipboardCheck,  path: '/visitor/my-requests', group: 'visitor' },
-  { label: 'Events',        icon: CalendarDays,    path: '/visitor/events',      group: 'visitor' },
-  { label: 'Profile',   icon: UserCircle,      path: '/teacher/profile' },
+  { label: 'My Requests',    icon: ClipboardCheck,  path: '/visitor/my-requests', group: 'visitor' },
+  { label: 'Events',         icon: CalendarDays,    path: '/visitor/events',      group: 'visitor' },
+  { label: 'Profile',        icon: UserCircle,      path: '/teacher/profile' },
 ]
 
 const securityNavItems: NavItem[] = [

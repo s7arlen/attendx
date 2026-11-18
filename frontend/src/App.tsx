@@ -27,6 +27,7 @@ import ReportsPage from '@/pages/admin/ReportsPage'
 import AuditLogsPage from '@/pages/admin/AuditLogsPage'
 import DisputesPage from '@/pages/admin/DisputesPage'
 import AdminProfilePage from '@/pages/admin/AdminProfilePage'
+import RiskAnalyticsPage from '@/pages/admin/RiskAnalyticsPage'
 
 // Teacher Pages
 import TeacherDashboard from '@/pages/teacher/TeacherDashboard'
@@ -39,6 +40,8 @@ import TeacherAnalyticsPage from '@/pages/teacher/TeacherAnalyticsPage'
 import TeacherProfilePage from '@/pages/teacher/TeacherProfilePage'
 import RiskDashboardPage from '@/pages/teacher/RiskDashboardPage'
 import AssessmentsPage from '@/pages/teacher/AssessmentsPage'
+import WhatIfPage from '@/pages/teacher/WhatIfPage'
+import InterventionsPage from '@/pages/teacher/InterventionsPage'
 
 // Student Pages
 import StudentDashboard from '@/pages/student/StudentDashboard'
@@ -131,6 +134,7 @@ export default function App() {
             <Route path="audit-logs" element={<AuditLogsPage />} />
             <Route path="disputes" element={<DisputesPage />} />
             <Route path="profile" element={<AdminProfilePage />} />
+            <Route path="risk-analytics" element={<RiskAnalyticsPage />} />
           </Route>
 
           {/* Teacher */}
@@ -145,6 +149,8 @@ export default function App() {
             <Route path="profile" element={<TeacherProfilePage />} />
             <Route path="assessments" element={<AssessmentsPage />} />
             <Route path="risk" element={<RiskDashboardPage />} />
+            <Route path="whatif" element={<WhatIfPage />} />
+            <Route path="interventions" element={<InterventionsPage />} />
           </Route>
 
           {/* Student */}

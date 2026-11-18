@@ -305,6 +305,9 @@ export const verifyAttendance = async (req: AuthRequest, res: Response): Promise
 
     await createAuditLog(req.user!.userId, 'MARK_ATTENDANCE', 'AttendanceRecord', record._id.toString(), { sessionId }, getClientIp(req));
 
+    // Auto-trigger risk reassessment in background (non-blocking)
+    import('../controllers/academic.controller').then(m => m.triggerRiskAssessment(req.user!.userId)).catch(() => {});
+
     // Notify student their attendance was marked
     const { Notification } = await import('../models/Notification.model');
     await Notification.create({

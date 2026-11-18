@@ -1,0 +1,170 @@
+import { useQuery } from '@tanstack/react-query'
+import { Brain, AlertTriangle, TrendingUp, Users, Activity, Info } from 'lucide-react'
+import { academicService } from '@/services/academic.service'
+import { RiskLevel, User } from '@/types'
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
+
+const RISK_COLORS: Record<string, string> = { HIGH: '#ef4444', MODERATE: '#f59e0b', LOW: '#22c55e', UNASSESSED: '#94a3b8' }
+
+export default function RiskAnalyticsPage() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['admin-risk-analytics'],
+    queryFn: academicService.getRiskDashboard,
+  })
+
+  const { data: mlInfo } = useQuery({
+    queryKey: ['ml-info'],
+    queryFn: () => academicService.getMLInfo(),
+  })
+
+  if (isLoading) return (
+    <div className="p-6 space-y-4">{[...Array(6)].map((_, i) => <div key={i} className="h-24 bg-muted rounded-xl animate-pulse" />)}</div>
+  )
+
+  const summary = data?.summary
+  const pieData = [
+    { name: 'High Risk', value: summary?.high || 0, color: RISK_COLORS.HIGH },
+    { name: 'Moderate Risk', value: summary?.moderate || 0, color: RISK_COLORS.MODERATE },
+    { name: 'Low Risk', value: summary?.low || 0, color: RISK_COLORS.LOW },
+    { name: 'Not Assessed', value: summary?.unassessed || 0, color: RISK_COLORS.UNASSESSED },
+  ].filter(d => d.value > 0)
+
+  const barData = data?.allStudents
+    .filter(s => s.riskLevel !== 'UNASSESSED')
+    .sort((a, b) => b.riskScore - a.riskScore)
+    .slice(0, 10)
+    .map(s => ({
+      name: ((s.student as User)?.name || '').split(' ')[0],
+      score: s.riskScore,
+      level: s.riskLevel,
+    })) || []
+
+  return (
+    <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
+      <div>
+        <h1 className="text-2xl font-bold flex items-center gap-2"><Brain className="w-6 h-6 text-primary" /> AI Risk Analytics</h1>
+        <p className="text-sm text-muted-foreground mt-1">Institution-wide academic risk distribution and ML model status</p>
+      </div>
+
+      {/* ML Model Status */}
+      <div className="bg-card border rounded-xl p-4 flex items-center gap-4">
+        <div className={`w-3 h-3 rounded-full ${(mlInfo as any)?.mlAvailable ? 'bg-green-500' : 'bg-amber-500'}`} />
+        <div className="flex-1">
+          <p className="text-sm font-semibold">
+            ML Service: {(mlInfo as any)?.mlAvailable ? '✅ Online (ML_MODEL)' : '⚠️ Offline (Rule-Based Fallback)'}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {(mlInfo as any)?.modelInfo?.metadata?.model_name || 'Rule-Based Engine'} · 
+            Data: {(mlInfo as any)?.modelInfo?.metadata?.data_type || 'N/A'} · 
+            Accuracy: {(mlInfo as any)?.modelInfo?.metadata?.evaluation?.test_accuracy ? `${((mlInfo as any).modelInfo.metadata.evaluation.test_accuracy * 100).toFixed(1)}%` : 'N/A'}
+          </p>
+        </div>
+        <div className="text-xs px-2 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+          Synthetic Training Data
+        </div>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {[
+          { label: 'Total Students', value: summary?.total || 0, color: 'text-blue-600', bg: 'bg-blue-50', icon: Users },
+          { label: 'High Risk',      value: summary?.high || 0,  color: 'text-red-600',   bg: 'bg-red-50',   icon: AlertTriangle },
+          { label: 'Moderate Risk',  value: summary?.moderate || 0, color: 'text-amber-600', bg: 'bg-amber-50', icon: TrendingUp },
+          { label: 'Low Risk',       value: summary?.low || 0,   color: 'text-green-600', bg: 'bg-green-50', icon: Activity },
+        ].map(c => (
+          <div key={c.label} className="bg-card border rounded-xl p-4">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-lg ${c.bg} flex items-center justify-center`}>
+                <c.icon className={`w-5 h-5 ${c.color}`} />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">{c.label}</p>
+                <p className="text-2xl font-bold">{c.value}</p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-6">
+        {/* Pie Chart */}
+        <div className="bg-card border rounded-xl p-5">
+          <p className="font-semibold mb-4">Risk Distribution</p>
+          {pieData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
+                  {pieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : <p className="text-muted-foreground text-sm text-center py-8">No risk data yet</p>}
+        </div>
+
+        {/* Bar Chart — Top Risk Scores */}
+        <div className="bg-card border rounded-xl p-5">
+          <p className="font-semibold mb-4">Top 10 — Risk Scores</p>
+          {barData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={barData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
+                <Tooltip />
+                <Bar dataKey="score" radius={[4, 4, 0, 0]}>
+                  {barData.map((entry, i) => <Cell key={i} fill={RISK_COLORS[entry.level]} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : <p className="text-muted-foreground text-sm text-center py-8">No data yet</p>}
+        </div>
+      </div>
+
+      {/* High Risk Students Table */}
+      {(data?.highRiskStudents || []).length > 0 && (
+        <div className="bg-card border rounded-xl overflow-hidden">
+          <div className="p-4 border-b flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-red-500" />
+            <p className="font-semibold">High Risk Students — Immediate Attention Required</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50">
+                <tr>
+                  <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Student</th>
+                  <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Roll No.</th>
+                  <th className="text-center px-4 py-3 font-semibold text-muted-foreground">Attendance</th>
+                  <th className="text-center px-4 py-3 font-semibold text-muted-foreground">Internal Avg</th>
+                  <th className="text-center px-4 py-3 font-semibold text-muted-foreground">Risk Score</th>
+                  <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Top Factor</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {data?.highRiskStudents.map((s, i) => {
+                  const student = s.student as User
+                  const topFactor = s.factors?.[0]
+                  return (
+                    <tr key={i} className="hover:bg-muted/30">
+                      <td className="px-4 py-3"><div className="font-medium">{student?.name}</div><div className="text-xs text-muted-foreground">{student?.email}</div></td>
+                      <td className="px-4 py-3 font-mono text-xs">{student?.rollNumber || '—'}</td>
+                      <td className="px-4 py-3 text-center"><span className={`font-semibold ${(s.attendancePercentage || 100) < 75 ? 'text-red-600' : 'text-green-600'}`}>{s.attendancePercentage != null ? `${s.attendancePercentage}%` : '—'}</span></td>
+                      <td className="px-4 py-3 text-center"><span className={`font-semibold ${(s.internalMarksAverage || 100) < 50 ? 'text-red-600' : 'text-green-600'}`}>{s.internalMarksAverage != null ? `${s.internalMarksAverage}%` : '—'}</span></td>
+                      <td className="px-4 py-3 text-center"><span className="font-bold text-red-600">{s.riskScore}</span></td>
+                      <td className="px-4 py-3 text-xs">{topFactor ? `${topFactor.factor}: ${topFactor.value}% (${topFactor.impact})` : '—'}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
+        <Info className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
+        <p className="text-xs text-blue-800">Risk assessments are advisory only. They must not be used as the sole basis for academic decisions. The ML model is trained on synthetic data — retrain with real institutional records for production use.</p>
+      </div>
+    </div>
+  )
+}

@@ -1,0 +1,76 @@
+{
+  "model_name": "LogisticRegression",
+  "version": "2.0-ml",
+  "training_date": "2026-11-18T11:05:45.166795",
+  "data_type": "SYNTHETIC",
+  "data_description": "Synthetic demonstration data \u2014 NOT real student records",
+  "training_samples": 640,
+  "test_samples": 160,
+  "features": [
+    "attendance_pct",
+    "internal_marks_avg",
+    "quiz_avg",
+    "assignment_pct"
+  ],
+  "feature_importance": {},
+  "evaluation": {
+    "test_accuracy": 0.8,
+    "cv_accuracy": 0.7737,
+    "confusion_matrix": [
+      [
+        70,
+        10,
+        0
+      ],
+      [
+        13,
+        52,
+        9
+      ],
+      [
+        0,
+        0,
+        6
+      ]
+    ],
+    "classification_report": {
+      "LOW": {
+        "precision": 0.8433734939759037,
+        "recall": 0.875,
+        "f1-score": 0.8588957055214724,
+        "support": 80.0
+      },
+      "MODERATE": {
+        "precision": 0.8387096774193549,
+        "recall": 0.7027027027027027,
+        "f1-score": 0.7647058823529411,
+        "support": 74.0
+      },
+      "HIGH": {
+        "precision": 0.4,
+        "recall": 1.0,
+        "f1-score": 0.5714285714285714,
+        "support": 6.0
+      },
+      "accuracy": 0.8,
+      "macro avg": {
+        "precision": 0.6940277237984195,
+        "recall": 0.8592342342342342,
+        "f1-score": 0.7316767197676617,
+        "support": 160.0
+      },
+      "weighted avg": {
+        "precision": 0.8245899727944035,
+        "recall": 0.8,
+        "f1-score": 0.8045528947775429,
+        "support": 160.0
+      }
+    }
+  },
+  "classes": [
+    "LOW",
+    "MODERATE",
+    "HIGH"
+  ],
+  "threshold_note": "Labels derived from composite academic risk score on synthetic data"
+}
