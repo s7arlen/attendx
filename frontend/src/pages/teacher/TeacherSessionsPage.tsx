@@ -5,11 +5,13 @@ import {
   Play, Users, Clock, QrCode, Hash,
   X, RefreshCw, AlertCircle, FileText,
   Maximize2, Minimize2, Copy, Check,
+  ExternalLink, MapPin, Shield, Presentation,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { attendanceService } from '@/services/attendance.service'
@@ -27,12 +29,14 @@ interface LiveSessionModalProps {
   onClose: () => void
 }
 
-const QR_REFRESH_INTERVAL = 20 // seconds
+// QR refresh interval is now per-session (from session.qrRefreshSeconds)
+const DEFAULT_QR_REFRESH = 20
 
 function LiveSessionModal({ session, onEnd, ending, onClose }: LiveSessionModalProps) {
   const [msLeft, setMsLeft] = useState(() => timeRemaining(session.expiryTime))
   const [qrCodeData, setQrCodeData] = useState(session.qrCodeData)
-  const [qrSecondsLeft, setQrSecondsLeft] = useState(QR_REFRESH_INTERVAL)
+  const qrInterval = (session as any).qrRefreshSeconds ?? DEFAULT_QR_REFRESH
+  const [qrSecondsLeft, setQrSecondsLeft] = useState(qrInterval)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isProjectorMode, setIsProjectorMode] = useState(false)
   const [showRoster, setShowRoster] = useState(false)
@@ -62,17 +66,17 @@ function LiveSessionModal({ session, onEnd, ending, onClose }: LiveSessionModalP
     }
   }, [session._id])
 
-  // QR refresh countdown + auto-refresh every 20s
+  // QR refresh countdown + auto-refresh
   useEffect(() => {
     if (msLeft <= 0) return
     const tick = setInterval(() => {
-      setQrSecondsLeft((prev) => {
-        if (prev <= 1) { doRefresh(); return QR_REFRESH_INTERVAL }
+      setQrSecondsLeft((prev: number) => {
+        if (prev <= 1) { doRefresh(); return qrInterval }
         return prev - 1
       })
     }, 1000)
     return () => clearInterval(tick)
-  }, [msLeft, session._id, doRefresh])
+  }, [msLeft, session._id, doRefresh, qrInterval])
 
   // Escape key handler for Projector Mode & dialog
   useEffect(() => {
@@ -113,6 +117,11 @@ function LiveSessionModal({ session, onEnd, ending, onClose }: LiveSessionModalP
   })
 
   const totalPresent = socketPresent ?? liveData?.totalPresent ?? session.totalPresent
+  const absentCount: number = liveData?.absentCount ?? 0
+  const capacity: number | null = (session as any).capacity ?? null
+  const sessionType: string = (session as any).sessionType ?? 'class'
+  const venue: string | null = (session as any).venue ?? null
+  const projectorUrl = `${window.location.origin}/projector/${session.sessionCode}`
   const subjectName = typeof session.subjectId === 'object'
     ? session.subjectId.subjectName : 'Session'
   const subjectCode = typeof session.subjectId === 'object' && session.subjectId !== null
@@ -148,7 +157,10 @@ function LiveSessionModal({ session, onEnd, ending, onClose }: LiveSessionModalP
         <div className="flex items-center justify-between border-b border-border/60 pb-6">
           <div>
             <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">{subjectName}</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">{subjectCode} · Attendance Session</p>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              {subjectCode} · {sessionType.charAt(0).toUpperCase() + sessionType.slice(1)}
+              {venue && ` · ${venue}`}
+            </p>
           </div>
           <div className="flex items-center gap-6">
             <div className="text-right">
@@ -188,7 +200,7 @@ function LiveSessionModal({ session, onEnd, ending, onClose }: LiveSessionModalP
                 </div>
               )}
             </div>
-            <p className="text-xs text-muted-foreground">Refreshes every {QR_REFRESH_INTERVAL}s</p>
+            <p className="text-xs text-muted-foreground">Refreshes every {qrInterval}s</p>
           </div>
 
           <div className="space-y-6 max-w-sm w-full">
@@ -293,7 +305,7 @@ function LiveSessionModal({ session, onEnd, ending, onClose }: LiveSessionModalP
             <div className="flex items-center justify-between w-full max-w-[260px] text-xs text-muted-foreground px-0.5">
               <span>Auto-refreshes in {qrSecondsLeft}s</span>
               <button
-                onClick={() => { doRefresh(); setQrSecondsLeft(QR_REFRESH_INTERVAL) }}
+                onClick={() => { doRefresh(); setQrSecondsLeft(qrInterval) }}
                 disabled={isRefreshing || isExpired}
                 className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors disabled:opacity-50"
               >
@@ -368,22 +380,67 @@ function LiveSessionModal({ session, onEnd, ending, onClose }: LiveSessionModalP
 
                 <div className="h-px bg-border/60" />
 
-                {/* Attendees counter */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                    <span className="text-sm font-medium text-foreground">
-                      {totalPresent} {totalPresent === 1 ? 'student' : 'students'} present
-                    </span>
+                {/* Attendees counter + absent + projector link */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                      <span className="text-sm font-medium text-foreground">
+                        {totalPresent} {totalPresent === 1 ? 'student' : 'students'} present
+                      </span>
+                    </div>
+                    {attendanceRecords.length > 0 && (
+                      <button
+                        onClick={() => setShowRoster(true)}
+                        className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+                      >
+                        View list
+                      </button>
+                    )}
                   </div>
-                  {attendanceRecords.length > 0 && (
-                    <button
-                      onClick={() => setShowRoster(true)}
-                      className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
-                    >
-                      View list
-                    </button>
+
+                  {/* Live progress bar (only for strict mode with known enrolled count) */}
+                  {absentCount > 0 && (
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>{absentCount} not yet marked</span>
+                        {capacity && <span>Cap: {capacity}</span>}
+                      </div>
+                      <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                          style={{ width: `${Math.min(100, (totalPresent / (totalPresent + absentCount)) * 100)}%` }}
+                        />
+                      </div>
+                    </div>
                   )}
+                  {capacity && (
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>Capacity</span>
+                        <span>{totalPresent}/{capacity}</span>
+                      </div>
+                      <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${
+                            totalPresent / capacity > 0.9 ? 'bg-red-500' :
+                            totalPresent / capacity > 0.7 ? 'bg-amber-500' : 'bg-primary'
+                          }`}
+                          style={{ width: `${Math.min(100, (totalPresent / capacity) * 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Projector link */}
+                  <button
+                    onClick={() => { navigator.clipboard?.writeText(projectorUrl); window.open(projectorUrl, '_blank') }}
+                    className="flex items-center gap-1.5 text-xs text-primary hover:underline"
+                  >
+                    <Presentation className="w-3 h-3" />
+                    Open Projector View
+                    <ExternalLink className="w-3 h-3" />
+                  </button>
                 </div>
               </div>
             ) : (
@@ -490,9 +547,15 @@ export default function TeacherSessionsPage() {
   const [startDialogOpen, setStartDialogOpen] = useState(false)
   const [selectedSubject, setSelectedSubject] = useState('')
   const [selectedDuration, setSelectedDuration] = useState('15')
+  const [sessionType, setSessionType] = useState('class')
+  const [verificationMode, setVerificationMode] = useState('strict')
+  const [capacity, setCapacity] = useState('')
+  const [gracePeriod, setGracePeriod] = useState('0')
+  const [venue, setVenue] = useState('')
+  const [inviteList, setInviteList] = useState('')
   const [subjectError, setSubjectError] = useState(false)
   const [liveSession, setLiveSession] = useState<AttendanceSession | null>(null)
-  const [historyFilter, setHistoryFilter] = useState<string>('all') // 'all' | 'active' | 'ended' | 'expired'
+  const [historyFilter, setHistoryFilter] = useState<string>('all')
 
   const { data: subjects } = useQuery({
     queryKey: ['teacher-subjects'],
@@ -520,8 +583,13 @@ export default function TeacherSessionsPage() {
       setStartDialogOpen(false)
       setSelectedSubject('')
       setSelectedDuration('15')
+      setSessionType('class')
+      setVerificationMode('strict')
+      setCapacity('')
+      setGracePeriod('0')
+      setVenue('')
+      setInviteList('')
       setSubjectError(false)
-      // Open QR modal with the full session data (includes qrCodeData + passwordCode)
       setLiveSession(session)
     },
     onError: (err) => {
@@ -703,61 +771,144 @@ export default function TeacherSessionsPage() {
 
       {/* Start Session Dialog */}
       <Dialog open={startDialogOpen} onOpenChange={(o) => { setStartDialogOpen(o); if (!o) { setSubjectError(false) } }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Start Attendance Session</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground -mt-1">
-            A QR code will be shown for students to scan.
+            A QR code will be generated for students to scan.
           </p>
-          <div className="space-y-4 pt-1">
+          <div className="space-y-3 pt-1 max-h-[65vh] overflow-y-auto pr-1">
+            {/* Subject */}
             <div className="space-y-1.5">
               <Label htmlFor="session-subject">Subject</Label>
-              <Select
-                value={selectedSubject}
-                onValueChange={(v) => { setSelectedSubject(v); setSubjectError(false) }}
-              >
-                <SelectTrigger
-                  id="session-subject"
-                  className={subjectError ? 'border-destructive' : ''}
-                  aria-describedby={subjectError ? 'subject-error' : undefined}
-                >
+              <Select value={selectedSubject} onValueChange={(v) => { setSelectedSubject(v); setSubjectError(false) }}>
+                <SelectTrigger id="session-subject" className={subjectError ? 'border-destructive' : ''}>
                   <SelectValue placeholder="Select a subject…" />
                 </SelectTrigger>
                 <SelectContent>
                   {subjects?.length ? subjects.map((s) => (
-                    <SelectItem key={s._id} value={s._id}>
-                      {s.subjectName} ({s.subjectCode})
-                    </SelectItem>
-                  )) : (
-                    <div className="px-3 py-2 text-sm text-muted-foreground">No subjects assigned</div>
-                  )}
+                    <SelectItem key={s._id} value={s._id}>{s.subjectName} ({s.subjectCode})</SelectItem>
+                  )) : <div className="px-3 py-2 text-sm text-muted-foreground">No subjects assigned</div>}
                 </SelectContent>
               </Select>
               {subjectError && (
-                <p id="subject-error" role="alert" className="text-xs text-destructive flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3" aria-hidden="true" />
-                  Please select a subject before starting
+                <p role="alert" className="text-xs text-destructive flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" /> Please select a subject
                 </p>
               )}
             </div>
+
+            {/* Session Type */}
             <div className="space-y-1.5">
-              <Label htmlFor="session-duration">
-                Duration
-                <span className="text-muted-foreground font-normal ml-1 text-xs">— how long the QR stays active</span>
-              </Label>
-              <Select value={selectedDuration} onValueChange={setSelectedDuration}>
-                <SelectTrigger id="session-duration">
+              <Label>Session Type</Label>
+              <Select value={sessionType} onValueChange={setSessionType}>
+                <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {[5, 10, 15, 20, 30, 45, 60].map((d) => (
-                    <SelectItem key={d} value={String(d)}>{d} minutes</SelectItem>
-                  ))}
+                  <SelectItem value="class">🎓 Class (regular lecture)</SelectItem>
+                  <SelectItem value="lab">🧪 Lab</SelectItem>
+                  <SelectItem value="seminar">🎤 Seminar (large crowd)</SelectItem>
+                  <SelectItem value="workshop">🛠️ Workshop</SelectItem>
+                  <SelectItem value="event">🎉 College Event</SelectItem>
+                </SelectContent>
+              </Select>
+              {['seminar', 'event'].includes(sessionType) && (
+                <p className="text-xs text-blue-600 flex items-center gap-1">
+                  <Shield className="w-3 h-3" /> QR will rotate every 60s (slower for large crowds)
+                </p>
+              )}
+            </div>
+
+            {/* Verification Mode */}
+            <div className="space-y-1.5">
+              <Label>Verification Mode</Label>
+              <Select value={verificationMode} onValueChange={setVerificationMode}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="strict">🔒 Strict — enrolled students only (class default)</SelectItem>
+                  <SelectItem value="open">🌐 Open — any registered user (seminars, events)</SelectItem>
+                  <SelectItem value="invite">📋 Invite-only — specific roll numbers</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Invite list — shown only for invite mode */}
+            {verificationMode === 'invite' && (
+              <div className="space-y-1.5">
+                <Label htmlFor="invite-list">
+                  Invite List <span className="text-muted-foreground font-normal text-xs">— roll numbers, comma separated</span>
+                </Label>
+                <Input
+                  id="invite-list"
+                  placeholder="e.g. 4CB22CS001, 4CB22CS002"
+                  value={inviteList}
+                  onChange={(e) => setInviteList(e.target.value)}
+                  className="font-mono text-xs"
+                />
+                <p className="text-xs text-muted-foreground">Only these roll numbers can mark attendance.</p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              {/* Duration */}
+              <div className="space-y-1.5">
+                <Label htmlFor="session-duration">Duration</Label>
+                <Select value={selectedDuration} onValueChange={setSelectedDuration}>
+                  <SelectTrigger id="session-duration"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {[5, 10, 15, 20, 30, 45, 60, 90, 120].map((d) => (
+                      <SelectItem key={d} value={String(d)}>{d} min</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Grace Period */}
+              <div className="space-y-1.5">
+                <Label htmlFor="grace-period">Late Entry Grace</Label>
+                <Select value={gracePeriod} onValueChange={setGracePeriod}>
+                  <SelectTrigger id="grace-period"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">None</SelectItem>
+                    <SelectItem value="5">+5 min</SelectItem>
+                    <SelectItem value="10">+10 min</SelectItem>
+                    <SelectItem value="15">+15 min</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {/* Capacity */}
+              <div className="space-y-1.5">
+                <Label htmlFor="capacity">Max Capacity <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                <Input
+                  id="capacity"
+                  type="number"
+                  min="1"
+                  placeholder="Unlimited"
+                  value={capacity}
+                  onChange={(e) => setCapacity(e.target.value)}
+                />
+              </div>
+
+              {/* Venue */}
+              <div className="space-y-1.5">
+                <Label htmlFor="venue">Venue <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                <Input
+                  id="venue"
+                  placeholder="e.g. Hall A, Room 301"
+                  value={venue}
+                  onChange={(e) => setVenue(e.target.value)}
+                />
+              </div>
+            </div>
           </div>
+
           <DialogFooter className="pt-2">
             <Button variant="outline" className="flex-1" onClick={() => setStartDialogOpen(false)}>
               Cancel
@@ -768,10 +919,21 @@ export default function TeacherSessionsPage() {
               loading={startMutation.isPending}
               onClick={() => {
                 if (!selectedSubject) { setSubjectError(true); return }
-                startMutation.mutate({ subjectId: selectedSubject, duration: parseInt(selectedDuration) })
+                startMutation.mutate({
+                  subjectId: selectedSubject,
+                  duration: parseInt(selectedDuration),
+                  sessionType,
+                  verificationMode,
+                  capacity: capacity ? parseInt(capacity) : null,
+                  gracePeriodMinutes: parseInt(gracePeriod),
+                  venue: venue || null,
+                  inviteList: inviteList
+                    ? inviteList.split(',').map(r => r.trim().toUpperCase()).filter(Boolean)
+                    : [],
+                } as any)
               }}
             >
-              <Play className="w-4 h-4" aria-hidden="true" />
+              <Play className="w-4 h-4" />
               Start & Show QR
             </Button>
           </DialogFooter>

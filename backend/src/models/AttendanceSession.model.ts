@@ -1,6 +1,8 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
 export type SessionStatus = 'active' | 'ended' | 'expired';
+export type SessionType = 'class' | 'seminar' | 'workshop' | 'event' | 'lab';
+export type VerificationMode = 'strict' | 'open' | 'invite';
 
 export interface IAttendanceSession extends Document {
   _id: mongoose.Types.ObjectId;
@@ -16,6 +18,16 @@ export interface IAttendanceSession extends Document {
   duration: number;
   totalPresent: number;
   autoCreated: boolean;
+  // New fields
+  sessionType: SessionType;
+  capacity: number | null;
+  verificationMode: VerificationMode;
+  gracePeriodMinutes: number;
+  qrRefreshSeconds: number;
+  coHosts: mongoose.Types.ObjectId[];
+  title: string | null;
+  venue: string | null;
+  inviteList: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -34,11 +46,28 @@ const AttendanceSessionSchema = new Schema<IAttendanceSession>(
     duration: { type: Number, default: 15 },
     totalPresent: { type: Number, default: 0 },
     autoCreated: { type: Boolean, default: false },
+    sessionType: {
+      type: String,
+      enum: ['class', 'seminar', 'workshop', 'event', 'lab'],
+      default: 'class',
+    },
+    capacity: { type: Number, default: null },
+    verificationMode: {
+      type: String,
+      enum: ['strict', 'open', 'invite'],
+      default: 'strict',
+    },
+    gracePeriodMinutes: { type: Number, default: 0 },
+    qrRefreshSeconds: { type: Number, default: 20 },
+    coHosts: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+    title: { type: String, default: null },
+    venue: { type: String, default: null },
+    inviteList: [{ type: String }],
   },
   { timestamps: true }
 );
 
-// Index for fast query by status and teacher/subject
 AttendanceSessionSchema.index({ subjectId: 1, teacherId: 1, status: 1 });
+AttendanceSessionSchema.index({ sessionCode: 1 });
 
 export const AttendanceSession = mongoose.model<IAttendanceSession>('AttendanceSession', AttendanceSessionSchema);

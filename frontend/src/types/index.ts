@@ -50,6 +50,8 @@ export interface Timetable {
 }
 
 export type SessionStatus = 'active' | 'ended' | 'expired';
+export type SessionType = 'class' | 'seminar' | 'workshop' | 'event' | 'lab';
+export type VerificationMode = 'strict' | 'open' | 'invite';
 
 export interface AttendanceSession {
   _id: string;
@@ -64,10 +66,21 @@ export interface AttendanceSession {
   status: SessionStatus;
   duration: number;
   totalPresent: number;
+  // New fields
+  sessionType: SessionType;
+  verificationMode: VerificationMode;
+  capacity: number | null;
+  gracePeriodMinutes: number;
+  qrRefreshSeconds: number;
+  venue: string | null;
+  title: string | null;
+  inviteList: string[];
+  coHosts: string[];
   createdAt: string;
 }
 
 export type VerificationStatus = 'verified' | 'pending' | 'rejected';
+export type VerificationMethod = 'qr' | 'password' | 'biometric' | 'offline_sync' | 'manual';
 
 export interface AttendanceRecord {
   _id: string;
@@ -76,6 +89,8 @@ export interface AttendanceRecord {
   subjectId: Subject | string;
   timestamp: string;
   verificationStatus: VerificationStatus;
+  verificationMethod: VerificationMethod;
+  isLate: boolean;
   createdAt: string;
 }
 

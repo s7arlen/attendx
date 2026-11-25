@@ -20,6 +20,7 @@ import notificationsRoutes from './routes/notifications.routes';
 import uploadRoutes from './routes/upload.routes';
 import visitorRoutes from './routes/visitor.routes';
 import academicRoutes from './routes/academic.routes';
+import chatbotRoutes from './routes/chatbot.routes';
 import { errorHandler } from './middleware/errorHandler';
 import { startAttendanceAlertJob } from './jobs/attendanceAlert';
 import { startAutoSessionJob } from './jobs/autoSession';
@@ -80,6 +81,7 @@ app.use('/api/notifications', notificationsRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/visitor', visitorRoutes);
 app.use('/api/academic', academicRoutes);
+app.use('/api/chatbot', chatbotRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

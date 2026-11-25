@@ -74,8 +74,8 @@ export default function WelcomePage() {
         </h1>
 
         {/* Tagline */}
-        <p className="text-white/85 text-xs sm:text-sm max-w-[280px] mx-auto font-normal leading-relaxed">
-          Dynamic QR codes & biometric verification for secure campus attendance.
+        <p className="text-white/85 text-xs sm:text-sm max-w-[300px] mx-auto font-normal leading-relaxed">
+          Smart QR attendance for every college session — from 10-student labs to 500-person seminars. Auto-scheduled, offline-ready, biometric-secured.
         </p>
       </motion.div>
 

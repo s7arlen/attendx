@@ -53,6 +53,8 @@ import StudentAnalyticsPage from '@/pages/student/StudentAnalyticsPage'
 import StudentProfilePage from '@/pages/student/StudentProfilePage'
 import AcademicProfilePage from '@/pages/student/AcademicProfilePage'
 import OfflineQRPage from '@/pages/student/OfflineQRPage'
+import AttendanceReceiptPage from '@/pages/student/AttendanceReceiptPage'
+import ProjectorPage from '@/pages/ProjectorPage'
 
 // Visitor Pages
 import VisitorDashboard from '@/pages/visitor/VisitorDashboard'
@@ -122,6 +124,8 @@ export default function App() {
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/terms-and-conditions" element={<Navigate to="/terms" replace />} />
           <Route path="/visitor-request" element={<VisitorRequestPage />} />
+          {/* Public projector view — no login required */}
+          <Route path="/projector/:sessionCode" element={<ProjectorPage />} />
           <Route path="/" element={<RootRedirect />} />
 
           {/* Admin */}
@@ -166,6 +170,7 @@ export default function App() {
             <Route path="profile" element={<StudentProfilePage />} />
             <Route path="academic" element={<AcademicProfilePage />} />
             <Route path="offline" element={<OfflineQRPage />} />
+            <Route path="receipt/:sessionId" element={<AttendanceReceiptPage />} />
           </Route>
 
           {/* Visitor Management — accessible by admin, security, teacher */}

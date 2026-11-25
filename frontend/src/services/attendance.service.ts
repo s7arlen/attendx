@@ -68,4 +68,9 @@ export const attendanceService = {
     const res = await api.get('/attendance/summary');
     return res.data.data;
   },
+
+  getAttendanceReceipt: async (sessionId: string) => {
+    const res = await api.get(`/attendance/receipt/${sessionId}`);
+    return res.data.data;
+  },
 };

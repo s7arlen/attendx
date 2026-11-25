@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useMutation } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { Html5Qrcode } from 'html5-qrcode'
 import {
   QrCode, KeyRound, CheckCircle2, ArrowLeft,
   BookOpen, Camera, Keyboard, Loader2, Fingerprint, ShieldAlert,
+  MapPin, Tag,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -25,6 +27,9 @@ interface ValidatedSession {
   id:         string
   subject?:   { _id?: string; subjectName?: string; subjectCode?: string }
   qrToken:    string
+  sessionType?: string
+  venue?:     string | null
+  title?:     string | null
 }
 
 // ─── QR scanner (stays mounted until decoded) ────────────────────────────────
@@ -81,6 +86,11 @@ function QRScannerView({ onDecoded, onFallback }: {
 
 // ─── Session confirmed banner ────────────────────────────────────────────────
 function SessionBanner({ session }: { session: ValidatedSession }) {
+  const SESSION_TYPE_EMOJI: Record<string, string> = {
+    class: '🎓', seminar: '🎤', workshop: '🛠️', event: '🎉', lab: '🧪',
+  }
+  const typeEmoji = session.sessionType ? SESSION_TYPE_EMOJI[session.sessionType] || '📋' : ''
+
   return (
     <div className="flex items-center gap-3 p-3 rounded-xl bg-emerald-500/5 border border-emerald-200 dark:border-emerald-900/50">
       <div className="w-9 h-9 rounded-xl bg-emerald-500/10 flex items-center justify-center" aria-hidden="true">
@@ -88,8 +98,18 @@ function SessionBanner({ session }: { session: ValidatedSession }) {
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Session verified</p>
-        <p className="font-semibold text-sm truncate">{session.subject?.subjectName || 'Session found'}</p>
-        <p className="text-xs text-muted-foreground font-mono">{session.subject?.subjectCode}</p>
+        <p className="font-semibold text-sm truncate">
+          {session.title || session.subject?.subjectName || 'Session found'}
+        </p>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+          {session.subject?.subjectCode && <span className="font-mono">{session.subject.subjectCode}</span>}
+          {session.sessionType && <span>{typeEmoji} {session.sessionType}</span>}
+          {session.venue && (
+            <span className="flex items-center gap-0.5">
+              <MapPin className="w-3 h-3" />{session.venue}
+            </span>
+          )}
+        </div>
       </div>
       <Badge variant="success">Active</Badge>
     </div>
@@ -107,6 +127,7 @@ export default function ScanQRPage() {
   const [biometricBusy, setBiometricBusy] = useState(false)
 
   const { user } = useAuthStore()
+  const navigate = useNavigate()
 
   const reset = useCallback(() => {
     setMode('choose'); setSession(null); setVerifyMethod('pick')
@@ -144,7 +165,14 @@ export default function ScanQRPage() {
         toast({ title: 'Already marked', description: 'Attendance already recorded for this session.', variant: 'destructive' })
         setMode('choose'); return
       }
-      setSession({ id: data.session?.id || variables.sessionId, subject: data.session?.subject, qrToken: variables.secureToken })
+      setSession({
+        id: data.session?.id || variables.sessionId,
+        subject: data.session?.subject,
+        qrToken: variables.secureToken,
+        sessionType: data.session?.sessionType,
+        venue: data.session?.venue,
+        title: data.session?.title,
+      })
       setVerifyMethod('pick')
     },
     onError: (err) => {
@@ -172,7 +200,14 @@ export default function ScanQRPage() {
       if (data.alreadyMarked) {
         toast({ title: 'Already marked', variant: 'destructive' }); return
       }
-      setSession({ id: data.session.id, subject: data.session.subject, qrToken: data.session.qrToken })
+      setSession({
+        id: data.session.id,
+        subject: data.session.subject,
+        qrToken: data.session.qrToken,
+        sessionType: data.session.sessionType,
+        venue: data.session.venue,
+        title: data.session.title,
+      })
       setVerifyMethod('pick')
     },
     onError: (err) => {
@@ -189,7 +224,13 @@ export default function ScanQRPage() {
       secureToken:  session!.qrToken,
       passwordCode: passwordCode.trim().toUpperCase(),
     }),
-    onSuccess: () => { setShowDone(true); toast({ title: 'Attendance marked!', variant: 'success' }) },
+    onSuccess: (data) => {
+      setShowDone(true)
+      const msg = data.data?.isLate
+        ? 'Attendance marked (late entry accepted) ✅'
+        : 'Attendance marked!'
+      toast({ title: msg, variant: 'success' })
+    },
     onError: (err) => {
       const error = err as ApiError;
       toast({ title: 'Wrong password', description: error.response?.data?.message || 'Try again.', variant: 'destructive' })
@@ -211,9 +252,8 @@ export default function ScanQRPage() {
     } catch (err) {
       const error = err as ApiError;
       const msg = error.response?.data?.message || error.message || 'Biometric verification failed.'
-      // User cancelled the prompt — don't show an error toast, just stay on the page
       if (msg.toLowerCase().includes('cancel') || msg.toLowerCase().includes('user')) {
-        // silent
+        // silent — user cancelled the browser prompt
       } else {
         toast({ title: 'Biometric failed', description: msg, variant: 'destructive' })
       }
@@ -223,24 +263,48 @@ export default function ScanQRPage() {
   }
 
   // ── Done ─────────────────────────────────────────────────────────────────
-  if (showDone) return (
-    <div className="max-w-md mx-auto mt-10">
-      <Card className="border-emerald-200 dark:border-emerald-900/50">
-        <CardContent className="py-14 flex flex-col items-center gap-5 text-center">
-          <div className="w-20 h-20 rounded-full bg-emerald-500/10 flex items-center justify-center">
-            <CheckCircle2 className="w-10 h-10 text-emerald-500" aria-hidden="true" />
-          </div>
-          <div>
-            <h3 className="text-xl font-bold">Attendance Marked!</h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              Recorded for <span className="font-medium text-foreground">{session?.subject?.subjectName || 'your session'}</span>.
-            </p>
-          </div>
-          <Button variant="outline" onClick={reset}>Mark Another</Button>
-        </CardContent>
-      </Card>
-    </div>
-  )
+  if (showDone) {
+    const SESSION_TYPE_EMOJI: Record<string, string> = {
+      class: '🎓', seminar: '🎤', workshop: '🛠️', event: '🎉', lab: '🧪',
+    }
+    const typeEmoji = session?.sessionType ? SESSION_TYPE_EMOJI[session.sessionType] || '📋' : '📋'
+
+    return (
+      <div className="max-w-md mx-auto mt-10">
+        <Card className="border-emerald-200 dark:border-emerald-900/50">
+          <CardContent className="py-10 flex flex-col items-center gap-5 text-center">
+            <div className="w-20 h-20 rounded-full bg-emerald-500/10 flex items-center justify-center">
+              <CheckCircle2 className="w-10 h-10 text-emerald-500" aria-hidden="true" />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold">Attendance Marked!</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Recorded for <span className="font-medium text-foreground">
+                  {session?.title || session?.subject?.subjectName || 'your session'}
+                </span>
+              </p>
+              {session?.sessionType && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  {typeEmoji} {session.sessionType.charAt(0).toUpperCase() + session.sessionType.slice(1)}
+                  {session.venue && <> · <MapPin className="w-3 h-3 inline" /> {session.venue}</>}
+                </p>
+              )}
+            </div>
+            <div className="flex flex-col gap-2 w-full">
+              <Button
+                variant="gradient"
+                className="w-full gap-2"
+                onClick={() => navigate(`/student/receipt/${session?.id}`)}
+              >
+                <CheckCircle2 className="w-4 h-4" /> View Attendance Receipt
+              </Button>
+              <Button variant="outline" onClick={reset}>Mark Another</Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   // ── Verification method picker (shown after session is confirmed) ─────────
   const VerifyPicker = () => (

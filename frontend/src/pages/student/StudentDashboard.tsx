@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { BookOpen, CheckCircle2, Clock, TrendingUp, QrCode } from 'lucide-react'
+import { BookOpen, CheckCircle2, Clock, TrendingUp, QrCode, Receipt } from 'lucide-react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -175,9 +175,20 @@ export default function StudentDashboard() {
                       </p>
                       <p className="text-xs text-muted-foreground">{formatDate(r.timestamp)}</p>
                     </div>
-                    <Badge variant={r.verificationStatus === 'verified' ? 'success' : 'secondary'}>
-                      {r.verificationStatus}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={r.verificationStatus === 'verified' ? 'success' : 'secondary'}>
+                        {r.verificationStatus}
+                      </Badge>
+                      {r.sessionId && (
+                        <button
+                          onClick={() => navigate(`/student/receipt/${typeof r.sessionId === 'object' ? r.sessionId._id : r.sessionId}`)}
+                          className="text-xs text-primary hover:underline flex items-center gap-0.5"
+                          title="View receipt"
+                        >
+                          <Receipt className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
                 {!analytics?.recentActivity?.length && (

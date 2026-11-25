@@ -1,6 +1,7 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
 export type VerificationStatus = 'verified' | 'pending' | 'rejected';
+export type VerificationMethod = 'qr' | 'password' | 'biometric' | 'offline_sync' | 'manual';
 
 export interface IAttendanceRecord extends Document {
   _id: mongoose.Types.ObjectId;
@@ -9,6 +10,8 @@ export interface IAttendanceRecord extends Document {
   subjectId: mongoose.Types.ObjectId;
   timestamp: Date;
   verificationStatus: VerificationStatus;
+  verificationMethod: VerificationMethod;
+  isLate: boolean;
   ipAddress?: string;
   deviceInfo?: string;
   createdAt: Date;
@@ -26,6 +29,12 @@ const AttendanceRecordSchema = new Schema<IAttendanceRecord>(
       enum: ['verified', 'pending', 'rejected'],
       default: 'verified',
     },
+    verificationMethod: {
+      type: String,
+      enum: ['qr', 'password', 'biometric', 'offline_sync', 'manual'],
+      default: 'password',
+    },
+    isLate: { type: Boolean, default: false },
     ipAddress: { type: String },
     deviceInfo: { type: String },
   },

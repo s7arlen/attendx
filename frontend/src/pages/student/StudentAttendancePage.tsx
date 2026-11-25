@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, XCircle, Clock, AlertTriangle, Filter } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { CheckCircle2, XCircle, Clock, AlertTriangle, Filter, Fingerprint, WifiOff, QrCode, KeyRound, Receipt } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -15,12 +16,28 @@ import { formatDate } from '@/lib/utils'
 import { AttendanceRecord, ApiError } from '@/types'
 import { toast } from '@/hooks/useToast'
 
+const METHOD_ICON: Record<string, any> = {
+  biometric:    Fingerprint,
+  offline_sync: WifiOff,
+  qr:           QrCode,
+  password:     KeyRound,
+  manual:       KeyRound,
+}
+const METHOD_LABEL: Record<string, string> = {
+  biometric:    'Biometric',
+  offline_sync: 'Offline Sync',
+  qr:           'QR Scan',
+  password:     'Password',
+  manual:       'Manual',
+}
+
 export default function StudentAttendancePage() {
   const [page, setPage]                   = useState(1)
   const [subjectFilter, setSubjectFilter] = useState('')
   const [disputeRecord, setDisputeRecord] = useState<AttendanceRecord | null>(null)
   const [disputeReason, setDisputeReason] = useState('')
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const limit = 20
 
   const { data, isLoading, isError, refetch } = useQuery({
@@ -120,35 +137,62 @@ export default function StudentAttendancePage() {
           ) : records.length > 0 ? (
             <>
               <div className="divide-y divide-border" role="list" aria-label="Attendance records">
-                {records.map((record) => (
-                  <div key={record._id} className="flex items-center gap-3 py-3" role="listitem">
-                    {statusIcon(record.verificationStatus)}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">
-                        {typeof record.subjectId === 'object' ? record.subjectId.subjectName : 'Subject'}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{formatDate(record.timestamp)}</p>
+                {records.map((record) => {
+                  const method = record.verificationMethod || 'password'
+                  const MethodIcon = METHOD_ICON[method] || KeyRound
+                  const sessionId = typeof record.sessionId === 'object'
+                    ? (record.sessionId as any)?._id
+                    : record.sessionId
+                  return (
+                    <div key={record._id} className="flex items-center gap-3 py-3" role="listitem">
+                      {statusIcon(record.verificationStatus)}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="text-sm font-medium truncate">
+                            {typeof record.subjectId === 'object' ? record.subjectId.subjectName : 'Subject'}
+                          </p>
+                          {record.isLate && (
+                            <span className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 rounded-full font-medium">
+                              Late
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <p className="text-xs text-muted-foreground">{formatDate(record.timestamp)}</p>
+                          <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
+                            <MethodIcon className="w-3 h-3" />
+                            {METHOD_LABEL[method] || method}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <Badge variant={statusVariant(record.verificationStatus)}>
+                          {record.verificationStatus}
+                        </Badge>
+                        {sessionId && (
+                          <button
+                            onClick={() => navigate(`/student/receipt/${sessionId}`)}
+                            title="View receipt"
+                            className="text-muted-foreground hover:text-primary transition-colors p-1"
+                          >
+                            <Receipt className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {record.verificationStatus === 'rejected' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="gap-1 text-xs text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950 h-7 px-2"
+                            onClick={() => { setDisputeRecord(record); setDisputeReason('') }}
+                          >
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                            Dispute
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <Badge variant={statusVariant(record.verificationStatus)}>
-                        {record.verificationStatus}
-                      </Badge>
-                      {/* Dispute button — only for rejected records */}
-                      {record.verificationStatus === 'rejected' && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="gap-1 text-xs text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950"
-                          aria-label="Raise dispute for this record"
-                          onClick={() => { setDisputeRecord(record); setDisputeReason('') }}
-                        >
-                          <AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" />
-                          Dispute
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
 
               {totalPages > 1 && (

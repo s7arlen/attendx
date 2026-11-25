@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import Sidebar from './Sidebar'
 import Navbar from './Navbar'
+import ChatBot from '@/components/shared/ChatBot'
 import { useThemeStore } from '@/store/themeStore'
 
 const pageTitles: Record<string, string> = {
@@ -100,6 +101,7 @@ export default function DashboardLayout() {
           </motion.div>
         </main>
       </div>
+      <ChatBot />
     </div>
   )
 }

@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Users, GraduationCap, BookOpen, Percent, Activity,
-  UserPlus, Download, Calendar, FileText, ArrowRight,
+  UserPlus, Download, Calendar, FileText, ArrowRight, Zap, MapPin,
 } from 'lucide-react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
 import StatCard from '@/components/shared/StatCard'
@@ -10,9 +10,11 @@ import { SkeletonCard } from '@/components/shared/LoadingSpinner'
 import ErrorState, { ChartEmpty } from '@/components/shared/ErrorState'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { adminService } from '@/services/admin.service'
 import { analyticsService } from '@/services/analytics.service'
 import { motion } from 'framer-motion'
+import api from '@/lib/axios'
 
 export default function AdminDashboard() {
   const { data: stats, isLoading: statsLoading, isError: statsError, refetch: refetchStats } = useQuery({
@@ -25,11 +27,23 @@ export default function AdminDashboard() {
     queryFn: analyticsService.getAdminAnalytics,
   })
 
+  // Live sessions across institution
+  const { data: liveData } = useQuery({
+    queryKey: ['admin-live-sessions'],
+    queryFn: async () => {
+      const res = await api.get('/attendance/teacher/sessions')
+      const all = res.data.data.sessions || []
+      return all.filter((s: any) => s.status === 'active')
+    },
+    refetchInterval: 20_000,
+  })
+  const liveSessions: any[] = liveData || []
+
   const statCards = [
-    { title: 'Total Students',  value: stats?.totalStudents ?? 0,         icon: GraduationCap, color: 'blue'   as const, index: 0 },
-    { title: 'Total Teachers',  value: stats?.totalTeachers ?? 0,         icon: Users,         color: 'purple' as const, index: 1 },
-    { title: 'Total Subjects',  value: stats?.totalSubjects ?? 0,         icon: BookOpen,      color: 'green'  as const, index: 2 },
-    { title: 'Attendance Rate', value: `${stats?.attendancePercentage ?? 0}%`, icon: Percent,    color: 'amber' as const, index: 3 },
+    { title: 'Total Students',  value: stats?.totalStudents ?? 0,              icon: GraduationCap, color: 'blue'   as const, index: 0 },
+    { title: 'Total Teachers',  value: stats?.totalTeachers ?? 0,              icon: Users,         color: 'purple' as const, index: 1 },
+    { title: 'Total Subjects',  value: stats?.totalSubjects ?? 0,              icon: BookOpen,      color: 'green'  as const, index: 2 },
+    { title: 'Attendance Rate', value: `${stats?.attendancePercentage ?? 0}%`, icon: Percent,       color: 'amber'  as const, index: 3 },
   ]
 
   return (
@@ -71,6 +85,41 @@ export default function AdminDashboard() {
             ? Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
             : statCards.map((c) => <StatCard key={c.title} {...c} />)
           }
+        </div>
+      )}
+
+      {/* ── Live Sessions Now ── */}
+      {liveSessions.length > 0 && (
+        <div className="bg-emerald-500/5 border border-emerald-200 dark:border-emerald-900/40 rounded-2xl p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+            <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
+              {liveSessions.length} session{liveSessions.length > 1 ? 's' : ''} live right now
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {liveSessions.map((s: any) => {
+              const subjectName = typeof s.subjectId === 'object' ? s.subjectId?.subjectName : 'Session'
+              const subjectCode = typeof s.subjectId === 'object' ? s.subjectId?.subjectCode : ''
+              const typeEmoji: Record<string, string> = { class:'🎓', seminar:'🎤', workshop:'🛠️', event:'🎉', lab:'🧪' }
+              return (
+                <div key={s._id} className="bg-white dark:bg-card rounded-xl p-3 border border-emerald-200 dark:border-emerald-900/30 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{subjectName}</p>
+                    <p className="text-xs text-muted-foreground font-mono flex items-center gap-1.5">
+                      <span>{subjectCode}</span>
+                      {s.sessionType && <span>{typeEmoji[s.sessionType] || '📋'} {s.sessionType}</span>}
+                      {s.venue && <span className="flex items-center gap-0.5"><MapPin className="w-3 h-3" />{s.venue}</span>}
+                    </p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-lg font-bold text-emerald-600">{s.totalPresent}</p>
+                    <p className="text-[10px] text-muted-foreground">present</p>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
 

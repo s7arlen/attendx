@@ -62,7 +62,6 @@ const teacherNavItems: NavItem[] = [
   { label: 'Events',            icon: CalendarDays,    path: '/visitor/events',      group: 'visitor' },
   { label: 'Profile',           icon: UserCircle,      path: '/teacher/profile' },
 ]
-
 const securityNavItems: NavItem[] = [
   { label: 'Gate Scanner',       icon: ScanLine,       path: '/visitor/gate' },
   { label: 'Register Visitor',   icon: UserPlus,       path: '/visitor/register' },
