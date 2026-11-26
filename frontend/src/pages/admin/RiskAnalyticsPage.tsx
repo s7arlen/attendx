@@ -42,39 +42,35 @@ export default function RiskAnalyticsPage() {
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
       <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2"><Brain className="w-6 h-6 text-primary" /> AI Risk Analytics</h1>
-        <p className="text-sm text-muted-foreground mt-1">Institution-wide academic risk distribution and ML model status</p>
+        <h1 className="text-2xl font-bold flex items-center gap-2"><Brain className="w-6 h-6 text-primary" /> Risk Analytics</h1>
+        <p className="text-sm text-muted-foreground mt-1">Institution-wide academic risk distribution and model status</p>
       </div>
 
-      {/* ML Model Status */}
-      <div className="bg-card border rounded-xl p-4 flex items-center gap-4">
-        <div className={`w-3 h-3 rounded-full ${(mlInfo as any)?.mlAvailable ? 'bg-green-500' : 'bg-amber-500'}`} />
+      {/* Model Status */}
+      <div className="glass-card border rounded-2xl p-4 flex items-center gap-4">
+        <div className={`w-2.5 h-2.5 rounded-full ${(mlInfo as any)?.mlAvailable ? 'bg-emerald-500' : 'bg-amber-500'}`} />
         <div className="flex-1">
           <p className="text-sm font-semibold">
-            ML Service: {(mlInfo as any)?.mlAvailable ? '✅ Online (ML_MODEL)' : '⚠️ Offline (Rule-Based Fallback)'}
+            Model Status: {(mlInfo as any)?.mlAvailable ? 'Active' : 'Fallback Mode'}
           </p>
           <p className="text-xs text-muted-foreground">
-            {(mlInfo as any)?.modelInfo?.metadata?.model_name || 'Rule-Based Engine'} · 
-            Data: {(mlInfo as any)?.modelInfo?.metadata?.data_type || 'N/A'} · 
+            {(mlInfo as any)?.modelInfo?.metadata?.model_name || 'Rule-Based Engine'} ·{' '}
             Accuracy: {(mlInfo as any)?.modelInfo?.metadata?.evaluation?.test_accuracy ? `${((mlInfo as any).modelInfo.metadata.evaluation.test_accuracy * 100).toFixed(1)}%` : 'N/A'}
           </p>
-        </div>
-        <div className="text-xs px-2 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-          Synthetic Training Data
         </div>
       </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { label: 'Total Students', value: summary?.total || 0, color: 'text-blue-600', bg: 'bg-blue-50', icon: Users },
-          { label: 'High Risk',      value: summary?.high || 0,  color: 'text-red-600',   bg: 'bg-red-50',   icon: AlertTriangle },
-          { label: 'Moderate Risk',  value: summary?.moderate || 0, color: 'text-amber-600', bg: 'bg-amber-50', icon: TrendingUp },
-          { label: 'Low Risk',       value: summary?.low || 0,   color: 'text-green-600', bg: 'bg-green-50', icon: Activity },
+          { label: 'Total Students', value: summary?.total || 0, color: 'text-rose-500', bg: 'bg-rose-500/10', icon: Users },
+          { label: 'High Risk',      value: summary?.high || 0,  color: 'text-red-500',  bg: 'bg-red-500/10',  icon: AlertTriangle },
+          { label: 'Moderate Risk',  value: summary?.moderate || 0, color: 'text-amber-500', bg: 'bg-amber-500/10', icon: TrendingUp },
+          { label: 'Low Risk',       value: summary?.low || 0,   color: 'text-emerald-500', bg: 'bg-emerald-500/10', icon: Activity },
         ].map(c => (
-          <div key={c.label} className="bg-card border rounded-xl p-4">
+          <div key={c.label} className="glass-card border rounded-2xl p-4">
             <div className="flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-lg ${c.bg} flex items-center justify-center`}>
+              <div className={`w-10 h-10 rounded-xl ${c.bg} flex items-center justify-center`}>
                 <c.icon className={`w-5 h-5 ${c.color}`} />
               </div>
               <div>
@@ -102,9 +98,9 @@ export default function RiskAnalyticsPage() {
           ) : <p className="text-muted-foreground text-sm text-center py-8">No risk data yet</p>}
         </div>
 
-        {/* Bar Chart — Top Risk Scores */}
-        <div className="bg-card border rounded-xl p-5">
-          <p className="font-semibold mb-4">Top 10 — Risk Scores</p>
+        {/* Bar Chart */}
+        <div className="glass-card border rounded-2xl p-5">
+          <p className="font-semibold mb-4">Top 10 Risk Scores</p>
           {barData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={barData}>
@@ -123,10 +119,10 @@ export default function RiskAnalyticsPage() {
 
       {/* High Risk Students Table */}
       {(data?.highRiskStudents || []).length > 0 && (
-        <div className="bg-card border rounded-xl overflow-hidden">
+        <div className="glass-card border rounded-2xl overflow-hidden">
           <div className="p-4 border-b flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 text-red-500" />
-            <p className="font-semibold">High Risk Students — Immediate Attention Required</p>
+            <p className="font-semibold">High Risk Students</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -161,9 +157,9 @@ export default function RiskAnalyticsPage() {
         </div>
       )}
 
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
-        <Info className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
-        <p className="text-xs text-blue-800">Risk assessments are advisory only. They must not be used as the sole basis for academic decisions. The ML model is trained on synthetic data — retrain with real institutional records for production use.</p>
+      <div className="bg-muted/40 border border-border rounded-2xl p-4 flex items-start gap-3">
+        <Info className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+        <p className="text-xs text-muted-foreground">Risk assessments are advisory only and should not be used as the sole basis for academic decisions.</p>
       </div>
     </div>
   )

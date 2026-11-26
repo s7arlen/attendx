@@ -7,3 +7,9 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
+      - key: ENV
+        value: production
+      - key: ML_API_KEY
+        sync: false          # Set shared secret matching backend ML_API_KEY
+      - key: ALLOWED_ORIGINS
+        sync: false          # Comma-separated backend/allowed origins

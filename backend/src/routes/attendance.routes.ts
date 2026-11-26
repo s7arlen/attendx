@@ -1,18 +1,27 @@
 import { Router } from 'express';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 import { attendanceLimiter } from '../middleware/rateLimiter';
+import { validateRequest } from '../middleware/validation.middleware';
 import {
   startSession, endSession, getLiveSession, getTeacherSessions, refreshQR,
-  verifyAttendance, getAttendanceHistory, getAttendanceSummary,
+  getAttendanceHistory, getAttendanceSummary,
   validateQR, findSessionByCode, raiseDispute, getActiveSessionsForStudent,
   syncOfflineAttendance, getProjectorSession, exportSessionCSV,
   getSessionReport, getAttendanceReceipt,
 } from '../controllers/attendance.controller';
+import {
+  registerFace,
+  verifyAttendanceWithFace,
+} from '../controllers/facialRecognition.controller';
+import {
+  registerFaceSchema,
+  verifyAttendanceWithFaceSchema,
+} from '../validators/facialRecognition.validators';
 
 const router = Router();
 
 // ── PUBLIC: Projector view — no auth (safe fields only) ──────────────────────
-router.get('/projector/:sessionCode', getProjectorSession);
+router.get('/projector/:sessionCode', attendanceLimiter, getProjectorSession);
 
 // ── All routes below require authentication ───────────────────────────────────
 router.use(authenticate);
@@ -28,13 +37,16 @@ router.get('/sessions/:sessionId/export', authorize('teacher', 'admin'), exportS
 
 // Student routes
 router.get('/active', authorize('student'), getActiveSessionsForStudent);
-router.get('/session/:sessionCode', authorize('student', 'admin'), findSessionByCode);
-router.post('/validate-qr', authorize('student', 'admin'), validateQR);
-router.post('/verify', authorize('student', 'admin'), attendanceLimiter, verifyAttendance);
-router.post('/sync-offline', authorize('student', 'admin'), syncOfflineAttendance);
+router.get('/session/:sessionCode', authorize('student', 'admin'), attendanceLimiter, findSessionByCode);
+router.post('/validate-qr', authorize('student', 'admin'), attendanceLimiter, validateQR);
+router.post('/sync-offline', authorize('student', 'admin'), attendanceLimiter, syncOfflineAttendance);
 router.post('/dispute/:recordId', authorize('student'), raiseDispute);
 router.get('/history', authorize('student', 'admin'), getAttendanceHistory);
 router.get('/summary', authorize('student', 'admin'), getAttendanceSummary);
 router.get('/receipt/:sessionId', authorize('student', 'admin'), getAttendanceReceipt);
+
+// Facial Recognition routes
+router.post('/face/register', authorize('student', 'admin'), validateRequest(registerFaceSchema), registerFace);
+router.post('/face/verify', authorize('student', 'admin'), attendanceLimiter, validateRequest(verifyAttendanceWithFaceSchema), verifyAttendanceWithFace);
 
 export default router;

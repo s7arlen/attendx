@@ -2,9 +2,14 @@ import mongoose from 'mongoose';
 
 export const connectDB = async (): Promise<void> => {
   try {
-    const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/attendx';
-    
-    const conn = await mongoose.connect(mongoUri, {
+    const mongoUri = process.env.MONGODB_URI;
+    if (!mongoUri) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('MONGODB_URI must be configured in production.');
+      }
+    }
+
+    const conn = await mongoose.connect(mongoUri || 'mongodb://localhost:27017/attendx', {
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
     });

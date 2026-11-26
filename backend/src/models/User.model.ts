@@ -12,6 +12,11 @@ export interface IWebAuthnCredential {
   createdAt: Date;
 }
 
+export interface IFaceDescriptor {
+  descriptor: number[];       // 128-element face embedding
+  capturedAt: Date;
+}
+
 export interface IUser extends Document {
   _id: mongoose.Types.ObjectId;
   name: string;
@@ -28,8 +33,10 @@ export interface IUser extends Document {
   refreshToken?: string;
   passwordResetToken?: string;
   passwordResetExpires?: Date;
+  passwordResetAttempts?: number;
   webauthnChallenge?: string;  // temp challenge during registration/auth
   webauthnCredentials: IWebAuthnCredential[];
+  faceDescriptor?: IFaceDescriptor;  // For facial recognition
   createdAt: Date;
   updatedAt: Date;
   comparePassword(password: string): Promise<boolean>;
@@ -51,6 +58,7 @@ const UserSchema = new Schema<IUser>(
     refreshToken: { type: String },
     passwordResetToken: { type: String },
     passwordResetExpires: { type: Date },
+    passwordResetAttempts: { type: Number, default: 0 },
     webauthnChallenge: { type: String },
     webauthnCredentials: {
       type: [{
@@ -62,6 +70,10 @@ const UserSchema = new Schema<IUser>(
         createdAt:    { type: Date, default: Date.now },
       }],
       default: [],
+    },
+    faceDescriptor: {
+      descriptor: [{ type: Number }],  // 128-element embedding array
+      capturedAt: { type: Date },
     },
   },
   { timestamps: true }
@@ -86,10 +98,15 @@ UserSchema.methods.toJSON = function () {
   delete obj.__v;
   delete obj.passwordHash;
   delete obj.refreshToken;
+  delete obj.passwordResetToken;
+  delete obj.passwordResetExpires;
+  delete obj.passwordResetAttempts;
   delete obj.webauthnChallenge;
   // Replace webauthnCredentials with a simple boolean flag
   obj.hasWebAuthn = Array.isArray(obj.webauthnCredentials) && obj.webauthnCredentials.length > 0;
+  obj.hasFaceDescriptor = !!obj.faceDescriptor?.descriptor?.length;
   delete obj.webauthnCredentials;
+  delete obj.faceDescriptor;
   return obj;
 };
 

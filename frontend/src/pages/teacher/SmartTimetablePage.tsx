@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { Clock, MapPin, BookOpen, Zap, CheckCircle, AlertCircle, Play, Users, RefreshCw, Calendar } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { teacherService } from '@/services/teacher.service'
-import { Timetable, Subject } from '@/types'
+import { Timetable } from '@/types'
 import api from '@/lib/axios'
 import { toast } from '@/hooks/useToast'
 
@@ -25,7 +25,6 @@ interface TodaySlot {
   autoSessionWillStart: boolean
   session: {
     id: string
-    passwordCode: string
     sessionCode: string
     totalPresent: number
     status: string
@@ -34,10 +33,10 @@ interface TodaySlot {
 }
 
 const STATUS_CONFIG: Record<SlotStatus, { label: string; color: string; bg: string; icon: any }> = {
-  live:     { label: 'Live Now',  color: 'text-green-700',  bg: 'bg-green-50 border-green-200',   icon: Play },
-  upcoming: { label: 'Upcoming',  color: 'text-blue-700',   bg: 'bg-blue-50 border-blue-200',     icon: Clock },
-  done:     { label: 'Completed', color: 'text-slate-600',  bg: 'bg-slate-50 border-slate-200',   icon: CheckCircle },
-  missed:   { label: 'No Session',color: 'text-amber-700',  bg: 'bg-amber-50 border-amber-200',   icon: AlertCircle },
+  live:     { label: 'Live Now',   color: 'text-emerald-500',       bg: 'bg-emerald-500/10 border-emerald-500/25', icon: Play },
+  upcoming: { label: 'Upcoming',   color: 'text-rose-500',          bg: 'bg-rose-500/10 border-rose-500/25',       icon: Clock },
+  done:     { label: 'Completed',  color: 'text-muted-foreground',  bg: 'bg-card/70 border-border',                icon: CheckCircle },
+  missed:   { label: 'No Session', color: 'text-amber-500',         bg: 'bg-amber-500/10 border-amber-500/25',     icon: AlertCircle },
 }
 
 function LiveCountdown({ minutes }: { minutes: number }) {
@@ -49,25 +48,22 @@ function LiveCountdown({ minutes }: { minutes: number }) {
   const m = Math.floor(remaining / 60)
   const s = remaining % 60
   return (
-    <span className="font-mono text-sm font-bold text-blue-600">
+    <span className="font-mono text-sm font-bold text-rose-500">
       {m}:{s.toString().padStart(2, '0')}
     </span>
   )
 }
 
 export default function SmartTimetablePage() {
-  const qc = useQueryClient()
   const [view, setView] = useState<'today' | 'weekly'>('today')
   const [startingSession, setStartingSession] = useState<string | null>(null)
 
-  // Today's auto-session status
   const { data: todayData, isLoading: loadingToday, refetch: refetchToday } = useQuery({
     queryKey: ['auto-sessions-today'],
     queryFn: () => api.get('/teacher/auto-sessions/today').then(r => r.data.data),
-    refetchInterval: 30000, // refresh every 30s
+    refetchInterval: 30000,
   })
 
-  // Weekly timetable
   const { data: timetable, isLoading: loadingWeekly } = useQuery({
     queryKey: ['teacher-timetable'],
     queryFn: teacherService.getMyTimetable,
@@ -80,7 +76,6 @@ export default function SmartTimetablePage() {
   const startManualSession = async (slot: TodaySlot) => {
     setStartingSession(slot.timetableId)
     try {
-      // Find subjectId from timetable
       const timetableRes = await api.get('/teacher/timetable')
       const timetableEntry = timetableRes.data.data.timetable.find(
         (t: any) => t._id === slot.timetableId
@@ -96,7 +91,7 @@ export default function SmartTimetablePage() {
       })()
 
       await api.post('/attendance/start-session', { subjectId, duration })
-      toast({ title: '✅ Session started', description: `${slot.subjectName} — Code will appear shortly`, variant: 'success' })
+      toast({ title: 'Session started', description: `${slot.subjectName}: session code will appear shortly`, variant: 'success' })
       refetchToday()
     } catch (e: any) {
       toast({ title: 'Error', description: e.response?.data?.message || 'Failed to start session', variant: 'destructive' })
@@ -108,7 +103,7 @@ export default function SmartTimetablePage() {
   const endSession = async (sessionId: string, subjectName: string) => {
     try {
       await api.post(`/attendance/end-session/${sessionId}`)
-      toast({ title: '⏹ Session ended', description: subjectName, variant: 'success' })
+      toast({ title: 'Session ended', description: subjectName, variant: 'success' })
       refetchToday()
     } catch (e: any) {
       toast({ title: 'Error', description: e.response?.data?.message, variant: 'destructive' })
@@ -126,17 +121,17 @@ export default function SmartTimetablePage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Zap className="w-6 h-6 text-primary" /> Smart Timetable
+            <Zap className="w-6 h-6 text-primary" /> Auto Schedule
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Sessions start automatically 2 min before class · Today: {todayData?.day || '—'}
+            Sessions open 2 minutes before scheduled classes · Today: {todayData?.day || 'N/A'}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" className="gap-1.5" onClick={() => refetchToday()}>
             <RefreshCw className="w-3.5 h-3.5" /> Refresh
           </Button>
-          <div className="flex border rounded-lg overflow-hidden">
+          <div className="flex border rounded-xl overflow-hidden">
             <button onClick={() => setView('today')}
               className={`px-3 py-1.5 text-sm font-medium transition-colors ${view === 'today' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}>
               Today
@@ -149,42 +144,30 @@ export default function SmartTimetablePage() {
         </div>
       </div>
 
-      {/* How it works banner */}
-      <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 flex items-start gap-3">
-        <Zap className="w-5 h-5 text-primary mt-0.5 shrink-0" />
-        <div className="text-sm">
-          <span className="font-semibold text-primary">Auto Session Magic: </span>
-          <span className="text-muted-foreground">
-            The system automatically starts your attendance session 2 minutes before each class and ends it at the scheduled time.
-            Students get notified instantly. No manual action needed.
-          </span>
-        </div>
-      </div>
-
       {/* TODAY VIEW */}
       {view === 'today' && (
         <div className="space-y-4">
 
           {/* Live sessions alert */}
           {liveSlots.length > 0 && (
-            <div className="bg-green-50 border border-green-200 rounded-xl p-4 space-y-3">
-              <p className="text-sm font-bold text-green-800 flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse inline-block" />
-                {liveSlots.length} session{liveSlots.length > 1 ? 's' : ''} LIVE right now
+            <div className="bg-emerald-500/10 border border-emerald-500/25 rounded-2xl p-4 space-y-3">
+              <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" />
+                {liveSlots.length} session{liveSlots.length > 1 ? 's' : ''} active
               </p>
               {liveSlots.map(slot => (
-                <div key={slot.timetableId} className="flex items-center justify-between gap-3 bg-white rounded-lg p-3 border border-green-200">
+                <div key={slot.timetableId} className="flex items-center justify-between gap-3 glass-card rounded-xl p-3 border border-emerald-500/20">
                   <div>
                     <p className="font-semibold text-sm">{slot.subjectName}</p>
                     <p className="text-xs text-muted-foreground font-mono">
-                      Code: <strong>{slot.session?.passwordCode}</strong> · {slot.session?.totalPresent} present
+                      Session: <strong>{slot.session?.sessionCode}</strong> · {slot.session?.totalPresent} present
                     </p>
                     {slot.session?.autoCreated && (
-                      <p className="text-xs text-green-600 flex items-center gap-1 mt-0.5"><Zap className="w-3 h-3" /> Auto-started</p>
+                      <p className="text-xs text-emerald-500 flex items-center gap-1 mt-0.5"><Zap className="w-3 h-3" /> Auto-started</p>
                     )}
                   </div>
                   <Button size="sm" variant="outline"
-                    className="text-red-600 border-red-200 hover:bg-red-50 shrink-0"
+                    className="text-red-500 border-red-500/30 hover:bg-red-500/10 shrink-0"
                     onClick={() => slot.session && endSession(slot.session.id, slot.subjectName)}>
                     End Session
                   </Button>
@@ -195,22 +178,22 @@ export default function SmartTimetablePage() {
 
           {/* Upcoming sessions */}
           {upcomingSlots.length > 0 && (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-2">
-              <p className="text-sm font-semibold text-blue-800">Upcoming Today</p>
+            <div className="bg-rose-500/5 border border-rose-500/20 rounded-2xl p-4 space-y-2">
+              <p className="text-sm font-semibold text-rose-500">Upcoming Today</p>
               {upcomingSlots.map(slot => (
-                <div key={slot.timetableId} className="flex items-center justify-between gap-3 bg-white rounded-lg p-3 border border-blue-200">
+                <div key={slot.timetableId} className="flex items-center justify-between gap-3 glass-card rounded-xl p-3 border border-rose-500/15">
                   <div>
                     <p className="font-semibold text-sm">{slot.subjectName}</p>
                     <p className="text-xs text-muted-foreground">
-                      {slot.startTime} – {slot.endTime}
+                      {slot.startTime} - {slot.endTime}
                       {slot.room && ` · Room ${slot.room}`}
                     </p>
                     {slot.autoSessionWillStart && (
-                      <p className="text-xs text-blue-600 flex items-center gap-1 mt-0.5">
+                      <p className="text-xs text-rose-500 flex items-center gap-1 mt-0.5">
                         <Zap className="w-3 h-3" />
                         Auto-starts in {slot.minutesUntilStart != null ? (
                           <LiveCountdown minutes={slot.minutesUntilStart} />
-                        ) : '—'}
+                        ) : 'N/A'}
                       </p>
                     )}
                   </div>
@@ -228,10 +211,10 @@ export default function SmartTimetablePage() {
           {/* All today's slots */}
           {loadingToday ? (
             <div className="space-y-3">
-              {[...Array(3)].map((_, i) => <div key={i} className="h-20 bg-muted rounded-xl animate-pulse" />)}
+              {[...Array(3)].map((_, i) => <div key={i} className="h-20 bg-muted/40 rounded-xl animate-pulse" />)}
             </div>
           ) : slots.length === 0 ? (
-            <div className="text-center py-16 bg-card border rounded-xl text-muted-foreground">
+            <div className="text-center py-16 glass-card border rounded-2xl text-muted-foreground">
               <Calendar className="w-12 h-12 mx-auto mb-3 opacity-30" />
               <p className="font-medium">No classes scheduled for today</p>
               <p className="text-sm mt-1">Switch to Weekly view to see your full schedule</p>
@@ -243,13 +226,13 @@ export default function SmartTimetablePage() {
                 const cfg = STATUS_CONFIG[slot.status]
                 const Icon = cfg.icon
                 return (
-                  <div key={slot.timetableId} className={`border rounded-xl p-4 ${cfg.bg}`}>
+                  <div key={slot.timetableId} className={`border rounded-2xl p-4 backdrop-blur-md ${cfg.bg}`}>
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-semibold">{slot.subjectName}</span>
                           <span className="text-xs font-mono text-muted-foreground">{slot.subjectCode}</span>
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex items-center gap-1 ${cfg.color} bg-white/60`}>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex items-center gap-1 ${cfg.color} bg-background/60`}>
                             <Icon className="w-3 h-3" /> {cfg.label}
                           </span>
                           {slot.session?.autoCreated && (
@@ -259,20 +242,15 @@ export default function SmartTimetablePage() {
                           )}
                         </div>
                         <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5 text-xs text-muted-foreground">
-                          <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{slot.startTime} – {slot.endTime}</span>
+                          <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{slot.startTime} - {slot.endTime}</span>
                           {slot.room && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{slot.room}</span>}
                           {slot.session && <span className="flex items-center gap-1"><Users className="w-3 h-3" />{slot.session.totalPresent} present</span>}
                         </div>
-                        {slot.session && (
-                          <p className="text-xs mt-1 font-mono">
-                            Code: <strong>{slot.session.passwordCode}</strong>
-                          </p>
-                        )}
                       </div>
                       <div className="shrink-0 flex gap-2">
                         {slot.status === 'live' && slot.session && (
                           <Button size="sm" variant="outline"
-                            className="text-red-600 border-red-200 hover:bg-red-50 h-8 text-xs"
+                            className="text-red-500 border-red-500/30 hover:bg-red-500/10 h-8 text-xs"
                             onClick={() => endSession(slot.session!.id, slot.subjectName)}>
                             End
                           </Button>
@@ -309,7 +287,7 @@ export default function SmartTimetablePage() {
                 return (
                   <Card key={day} className={isToday ? 'ring-2 ring-primary' : ''}>
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center justify-between">
+                      <CardTitle className="text-sm font-semibold text-muted-foreground flex items-center justify-between">
                         <span>{day}</span>
                         {isToday && <span className="text-xs px-2 py-0.5 bg-primary text-primary-foreground rounded-full font-medium">Today</span>}
                       </CardTitle>
@@ -331,7 +309,7 @@ export default function SmartTimetablePage() {
                                 <Badge variant="secondary" className="text-xs shrink-0">{sub?.subjectCode}</Badge>
                               </div>
                               <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
-                                <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{slot.startTime} – {slot.endTime}</span>
+                                <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{slot.startTime} - {slot.endTime}</span>
                                 {slot.room && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{slot.room}</span>}
                               </div>
                               {isToday && (

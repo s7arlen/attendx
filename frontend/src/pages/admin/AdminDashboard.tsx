@@ -57,7 +57,7 @@ export default function AdminDashboard() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Admin Overview</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Institutional summary and real-time attendance metrics
+            Institutional summary and attendance metrics
           </p>
         </div>
         <div className="flex items-center gap-2.5">
@@ -101,14 +101,13 @@ export default function AdminDashboard() {
             {liveSessions.map((s: any) => {
               const subjectName = typeof s.subjectId === 'object' ? s.subjectId?.subjectName : 'Session'
               const subjectCode = typeof s.subjectId === 'object' ? s.subjectId?.subjectCode : ''
-              const typeEmoji: Record<string, string> = { class:'🎓', seminar:'🎤', workshop:'🛠️', event:'🎉', lab:'🧪' }
               return (
-                <div key={s._id} className="bg-white dark:bg-card rounded-xl p-3 border border-emerald-200 dark:border-emerald-900/30 flex items-center justify-between gap-2">
+                <div key={s._id} className="glass-card rounded-xl p-3 border border-emerald-500/20 flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-sm font-medium truncate">{subjectName}</p>
                     <p className="text-xs text-muted-foreground font-mono flex items-center gap-1.5">
                       <span>{subjectCode}</span>
-                      {s.sessionType && <span>{typeEmoji[s.sessionType] || '📋'} {s.sessionType}</span>}
+                      {s.sessionType && <span className="capitalize font-sans">{s.sessionType}</span>}
                       {s.venue && <span className="flex items-center gap-0.5"><MapPin className="w-3 h-3" />{s.venue}</span>}
                     </p>
                   </div>

@@ -21,6 +21,14 @@ services:
         value: 7d
       - key: FRONTEND_URL
         sync: false          # Set to your Vercel URL in dashboard
+      - key: ALLOWED_ORIGINS
+        sync: false          # Optional comma-separated list of allowed frontend origins
+      - key: ML_SERVICE_URL
+        sync: false          # URL of attendx-ml-service
+      - key: ML_API_KEY
+        sync: false          # Shared API key matching ml-service ML_API_KEY
+      - key: CRON_TRIGGER_SECRET
+        sync: false          # Optional dedicated secret for /admin-trigger/* endpoints
       - key: RATE_LIMIT_WINDOW_MS
         value: 900000
       - key: RATE_LIMIT_MAX

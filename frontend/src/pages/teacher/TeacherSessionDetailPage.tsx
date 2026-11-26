@@ -102,10 +102,6 @@ export default function TeacherSessionDetailPage() {
     }
   }
 
-  const SESSION_TYPE_EMOJI: Record<string, string> = {
-    class: '🎓', seminar: '🎤', workshop: '🛠️', event: '🎉', lab: '🧪',
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
@@ -119,7 +115,7 @@ export default function TeacherSessionDetailPage() {
               ? `${typeof session.subjectId === 'object' ? (session.subjectId as any).subjectName : 'Unknown'} · ${formatDate(session.startTime)}`
               : '…'
             }
-            {session?.sessionType && ` · ${SESSION_TYPE_EMOJI[sessionType] || ''} ${sessionType}`}
+            {session?.sessionType && ` · ${sessionType.charAt(0).toUpperCase() + sessionType.slice(1)}`}
             {venue && ` · ${venue}`}
           </p>
         </div>
@@ -237,7 +233,7 @@ export default function TeacherSessionDetailPage() {
               {/* ABSENT TAB */}
               {tab === 'absent' && (
                 absentStudents.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-8">All enrolled students marked attendance 🎉</p>
+                  <p className="text-sm text-muted-foreground text-center py-8">All enrolled students are present.</p>
                 ) : (
                   <div className="divide-y divide-border" role="list">
                     {absentStudents.map((s, i) => (

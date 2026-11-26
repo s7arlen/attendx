@@ -60,13 +60,11 @@ export interface AttendanceSession {
   sessionCode: string;
   qrToken: string;
   qrCodeData: string;
-  passwordCode: string;
   startTime: string;
   expiryTime: string;
   status: SessionStatus;
   duration: number;
   totalPresent: number;
-  // New fields
   sessionType: SessionType;
   verificationMode: VerificationMode;
   capacity: number | null;

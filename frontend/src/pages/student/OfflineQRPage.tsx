@@ -1,5 +1,10 @@
+/**
+ * OfflineQRPage — Save session ID offline, sync when back online.
+ * Passcode removed — biometric verification happens at sync time
+ * via the backend session lookup (session ID is enough to record offline intent).
+ */
 import { useState, useEffect } from 'react'
-import { WifiOff, Wifi, CloudUpload, CheckCircle, AlertCircle, Trash2, QrCode, KeyRound, Clock } from 'lucide-react'
+import { WifiOff, Wifi, CloudUpload, CheckCircle, AlertCircle, Trash2, QrCode, Clock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -11,9 +16,6 @@ const STORAGE_KEY = 'attendx_offline_records'
 interface OfflineRecord {
   id: string
   sessionId: string
-  subjectId: string
-  passwordCode: string
-  secureToken: string
   subjectName: string
   timestamp: string
   synced: boolean
@@ -21,11 +23,8 @@ interface OfflineRecord {
 }
 
 function getOfflineRecords(): OfflineRecord[] {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
-  } catch {
-    return []
-  }
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') }
+  catch { return [] }
 }
 
 function saveOfflineRecords(records: OfflineRecord[]) {
@@ -47,7 +46,7 @@ function useOnlineStatus() {
 export default function OfflineQRPage() {
   const isOnline = useOnlineStatus()
   const [records, setRecords] = useState<OfflineRecord[]>(getOfflineRecords)
-  const [form, setForm] = useState({ sessionId: '', subjectId: '', passwordCode: '', subjectName: '' })
+  const [form, setForm] = useState({ sessionId: '', subjectName: '' })
   const [syncing, setSyncing] = useState(false)
   const [tab, setTab] = useState<'capture' | 'queue'>('capture')
 
@@ -56,41 +55,37 @@ export default function OfflineQRPage() {
     if (isOnline) {
       const pending = records.filter(r => !r.synced)
       if (pending.length > 0) {
-        toast({ title: `📡 Back online — syncing ${pending.length} record(s)`, variant: 'info' as any })
+        toast({ title: `Back online. Syncing ${pending.length} record(s)`, variant: 'info' as any })
         syncAll()
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOnline])
 
   const saveRecord = () => {
-    if (!form.sessionId || !form.passwordCode) {
-      toast({ title: 'Session ID and Password Code are required', variant: 'destructive' })
+    if (!form.sessionId.trim()) {
+      toast({ title: 'Session ID is required', variant: 'destructive' })
       return
     }
-
-    // Check duplicate
-    const existing = records.find(r => r.sessionId === form.sessionId)
+    const existing = records.find(r => r.sessionId === form.sessionId.trim())
     if (existing) {
       toast({ title: 'Already saved for this session', variant: 'destructive' })
       return
     }
 
     const record: OfflineRecord = {
-      id: Date.now().toString(),
-      sessionId: form.sessionId.trim(),
-      subjectId: form.subjectId.trim(),
-      passwordCode: form.passwordCode.trim().toUpperCase(),
-      secureToken: '',
+      id:          Date.now().toString(),
+      sessionId:   form.sessionId.trim(),
       subjectName: form.subjectName.trim() || 'Unknown Subject',
-      timestamp: new Date().toISOString(),
-      synced: false,
+      timestamp:   new Date().toISOString(),
+      synced:      false,
     }
 
     const updated = [...records, record]
     setRecords(updated)
     saveOfflineRecords(updated)
-    setForm({ sessionId: '', subjectId: '', passwordCode: '', subjectName: '' })
-    toast({ title: '💾 Saved offline', description: 'Will sync when internet is available', variant: 'success' })
+    setForm({ sessionId: '', subjectName: '' })
+    toast({ title: 'Saved offline', description: 'Will sync when internet is available', variant: 'success' })
     setTab('queue')
   }
 
@@ -110,9 +105,6 @@ export default function OfflineQRPage() {
     try {
       const payload = pending.map(r => ({
         sessionId: r.sessionId,
-        subjectId: r.subjectId,
-        passwordCode: r.passwordCode,
-        secureToken: r.secureToken,
         timestamp: r.timestamp,
       }))
 
@@ -124,7 +116,7 @@ export default function OfflineQRPage() {
         if (!result) return r
         return {
           ...r,
-          synced: result.status === 'synced' || result.status === 'duplicate',
+          synced:    result.status === 'synced' || result.status === 'duplicate',
           syncError: result.status === 'failed' ? result.message : undefined,
         }
       })
@@ -134,12 +126,12 @@ export default function OfflineQRPage() {
 
       const synced = results.filter(r => r.status === 'synced').length
       const failed = results.filter(r => r.status === 'failed').length
-      const dupes = results.filter(r => r.status === 'duplicate').length
+      const dupes  = results.filter(r => r.status === 'duplicate').length
 
       toast({
-        title: `Sync complete`,
+        title:       'Sync complete',
         description: `${synced} synced · ${dupes} already marked · ${failed} failed`,
-        variant: synced > 0 ? 'success' : 'info' as any,
+        variant:     synced > 0 ? 'success' : 'info' as any,
       })
     } catch (e: any) {
       toast({ title: 'Sync failed', description: e.response?.data?.message || 'Check your connection', variant: 'destructive' })
@@ -162,7 +154,7 @@ export default function OfflineQRPage() {
   }
 
   const pendingCount = records.filter(r => !r.synced).length
-  const syncedCount = records.filter(r => r.synced).length
+  const syncedCount  = records.filter(r => r.synced).length
 
   return (
     <div className="max-w-md mx-auto p-4 space-y-5">
@@ -176,25 +168,30 @@ export default function OfflineQRPage() {
           Offline Attendance
         </h2>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Save attendance details when offline — syncs automatically when you reconnect
+          Save your session ID when offline. Records sync automatically when you reconnect.
         </p>
       </div>
 
       {/* Connection status banner */}
-      <div className={`rounded-xl border p-3 flex items-center gap-3 ${isOnline ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
+      <div className={`rounded-xl border p-3 flex items-center gap-3 ${isOnline ? 'bg-emerald-500/10 border-emerald-500/25' : 'bg-amber-500/10 border-amber-500/25'}`}>
         {isOnline
-          ? <><Wifi className="w-4 h-4 text-green-600 shrink-0" /><p className="text-sm text-green-800 font-medium">Online — attendance saved directly to server</p></>
-          : <><WifiOff className="w-4 h-4 text-amber-600 shrink-0" /><div><p className="text-sm text-amber-800 font-medium">Offline mode active</p><p className="text-xs text-amber-700">Records saved to your device. Auto-syncs when internet returns.</p></div></>}
+          ? <><Wifi className="w-4 h-4 text-emerald-500 shrink-0" /><p className="text-sm text-emerald-700 dark:text-emerald-400 font-medium">Online: use the Scan QR page for real-time attendance</p></>
+          : <><WifiOff className="w-4 h-4 text-amber-500 shrink-0" /><div><p className="text-sm text-amber-700 dark:text-amber-400 font-medium">Offline mode active</p><p className="text-xs text-muted-foreground">Records saved to your device. Auto-syncs when internet returns.</p></div></>
+        }
       </div>
 
       {/* Tabs */}
       <div className="flex border rounded-lg overflow-hidden">
-        <button onClick={() => setTab('capture')}
-          className={`flex-1 py-2 text-sm font-medium transition-colors ${tab === 'capture' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}>
-          Capture Attendance
+        <button
+          onClick={() => setTab('capture')}
+          className={`flex-1 py-2 text-sm font-medium transition-colors ${tab === 'capture' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+        >
+          Capture
         </button>
-        <button onClick={() => setTab('queue')}
-          className={`flex-1 py-2 text-sm font-medium transition-colors relative ${tab === 'queue' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}>
+        <button
+          onClick={() => setTab('queue')}
+          className={`flex-1 py-2 text-sm font-medium transition-colors relative ${tab === 'queue' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+        >
           Sync Queue
           {pendingCount > 0 && (
             <span className="absolute top-1 right-2 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
@@ -209,35 +206,41 @@ export default function OfflineQRPage() {
         <div className="bg-card border rounded-xl p-5 space-y-4">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <QrCode className="w-4 h-4" />
-            <span>Enter the details from teacher's screen</span>
+            <span>Write down the Session ID from teacher's screen and enter it here</span>
           </div>
 
           <div className="space-y-3">
             <div>
-              <Label>Subject Name</Label>
-              <Input value={form.subjectName} onChange={e => setForm(f => ({ ...f, subjectName: e.target.value }))}
-                placeholder="e.g. OOP Java" className="mt-1" />
+              <Label>Subject Name <span className="text-muted-foreground font-normal text-xs">(optional)</span></Label>
+              <Input
+                value={form.subjectName}
+                onChange={e => setForm(f => ({ ...f, subjectName: e.target.value }))}
+                placeholder="e.g. OOP Java"
+                className="mt-1"
+              />
             </div>
             <div>
               <Label>Session ID <span className="text-red-500">*</span></Label>
-              <Input value={form.sessionId} onChange={e => setForm(f => ({ ...f, sessionId: e.target.value }))}
-                placeholder="From teacher's screen or session code" className="mt-1 font-mono" />
-              <p className="text-xs text-muted-foreground mt-1">The long ID or session code shown by teacher</p>
-            </div>
-            <div>
-              <Label>Password Code <span className="text-red-500">*</span></Label>
-              <Input value={form.passwordCode} onChange={e => setForm(f => ({ ...f, passwordCode: e.target.value.toUpperCase() }))}
-                placeholder="e.g. OOP-AB3X" className="mt-1 font-mono text-center tracking-widest uppercase" />
+              <Input
+                value={form.sessionId}
+                onChange={e => setForm(f => ({ ...f, sessionId: e.target.value }))}
+                placeholder="Session code shown on screen e.g. CS301-AB3X"
+                className="mt-1 font-mono"
+              />
+              <p className="text-xs text-muted-foreground mt-1">The session code displayed on teacher's screen or projector</p>
             </div>
           </div>
 
           <Button onClick={saveRecord} className="w-full gap-2">
-            {isOnline ? <><CloudUpload className="w-4 h-4" /> Save & Sync Now</> : <><WifiOff className="w-4 h-4" /> Save for Later Sync</>}
+            {isOnline
+              ? <><CloudUpload className="w-4 h-4" /> Save Record</>
+              : <><WifiOff className="w-4 h-4" /> Save for Later Sync</>
+            }
           </Button>
 
           {!isOnline && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800">
-              💡 <strong>Tip:</strong> Write down the Session ID and Password Code from the teacher's screen. Enter them here — your attendance will be synced automatically when you get internet access.
+            <div className="bg-muted/50 border border-border rounded-xl p-3 text-xs text-muted-foreground">
+              <strong>How it works:</strong> Write down the Session Code from your teacher's screen and enter it here. Attendance records automatically once internet access returns.
             </div>
           )}
         </div>
@@ -246,7 +249,6 @@ export default function OfflineQRPage() {
       {/* QUEUE TAB */}
       {tab === 'queue' && (
         <div className="space-y-3">
-          {/* Sync controls */}
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground">
               {pendingCount} pending · {syncedCount} synced
@@ -275,7 +277,16 @@ export default function OfflineQRPage() {
           ) : (
             <div className="space-y-2">
               {records.map(r => (
-                <div key={r.id} className={`border rounded-xl p-3 ${r.synced ? 'bg-green-50 border-green-200' : r.syncError ? 'bg-red-50 border-red-200' : 'bg-card'}`}>
+                <div
+                  key={r.id}
+                  className={`border rounded-xl p-3 ${
+                    r.synced
+                      ? 'bg-green-50 border-green-200'
+                      : r.syncError
+                      ? 'bg-red-50 border-red-200'
+                      : 'bg-card'
+                  }`}
+                >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -284,10 +295,11 @@ export default function OfflineQRPage() {
                           ? <span className="flex items-center gap-1 text-xs text-green-700"><CheckCircle className="w-3 h-3" /> Synced</span>
                           : r.syncError
                           ? <span className="flex items-center gap-1 text-xs text-red-600"><AlertCircle className="w-3 h-3" /> {r.syncError}</span>
-                          : <span className="text-xs text-amber-600 flex items-center gap-1"><Clock className="w-3 h-3" /> Pending</span>}
+                          : <span className="text-xs text-amber-600 flex items-center gap-1"><Clock className="w-3 h-3" /> Pending</span>
+                        }
                       </div>
-                      <p className="text-xs text-muted-foreground mt-0.5 font-mono">
-                        Code: {r.passwordCode}
+                      <p className="text-xs text-muted-foreground font-mono mt-0.5">
+                        {r.sessionId}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {new Date(r.timestamp).toLocaleString()}

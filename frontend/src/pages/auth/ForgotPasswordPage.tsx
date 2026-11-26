@@ -41,10 +41,10 @@ export default function ForgotPasswordPage() {
           <div className="w-10 h-10 gradient-bg rounded-xl flex items-center justify-center">
             <QrCode className="w-6 h-6 text-white" />
           </div>
-          <span className="text-2xl font-bold gradient-text">AttendX</span>
+          <span className="text-2xl font-bold text-foreground">AttendX</span>
         </div>
 
-        <div className="bg-card border rounded-2xl p-8 shadow-xl space-y-6">
+        <div className="glass-card border rounded-3xl p-8 shadow-xl space-y-6">
           {!sent ? (
             <>
               <div>

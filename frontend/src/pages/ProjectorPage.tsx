@@ -4,7 +4,7 @@
  *
  * Designed to be opened on a projector/TV in a seminar hall.
  * Auto-polls for QR updates. Shows countdown, attendance count,
- * session code, and password — everything students need.
+ * session code — everything students need to scan and verify via biometrics.
  */
 
 import { useState, useEffect } from 'react'
@@ -14,7 +14,6 @@ import api from '@/lib/axios'
 
 interface ProjectorData {
   sessionCode: string
-  passwordCode: string
   qrCodeData: string
   subjectName: string
   subjectCode: string
@@ -76,23 +75,25 @@ export default function ProjectorPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionCode])
 
-  // Countdown timer
+  // Countdown timer & QR refresh counter (paused while tab is hidden)
   useEffect(() => {
     if (!data) return
     const tick = setInterval(() => {
+      if (document.hidden) return
       const effectiveExpiry = new Date(data.expiryTime).getTime() + data.gracePeriodMinutes * 60 * 1000
       setMsLeft(Math.max(0, effectiveExpiry - Date.now()))
     }, 1000)
     return () => clearInterval(tick)
   }, [data])
 
-  // QR refresh counter + re-fetch
+  // QR refresh counter + re-fetch (resumes immediately when tab returns visible)
   useEffect(() => {
     if (!data) return
     const refreshInterval = data.qrRefreshSeconds || 30
     setQrCountdown(refreshInterval)
 
     const tick = setInterval(() => {
+      if (document.hidden) return
       setQrCountdown(prev => {
         if (prev <= 1) {
           fetchSession()
@@ -101,7 +102,19 @@ export default function ProjectorPage() {
         return prev - 1
       })
     }, 1000)
-    return () => clearInterval(tick)
+
+    const onVisibilityChange = () => {
+      if (!document.hidden) {
+        fetchSession()
+        setQrCountdown(refreshInterval)
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
+    return () => {
+      clearInterval(tick)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.qrRefreshSeconds, data?.expiryTime])
 
@@ -199,7 +212,7 @@ export default function ProjectorPage() {
           </div>
 
           <div className="mt-6 text-center text-sm text-muted-foreground">
-            Scan with <span className="font-semibold text-foreground">AttendX</span> app → Mark Attendance
+            Scan with <span className="font-semibold text-foreground">AttendX</span> app → Verify with Fingerprint / Face ID
           </div>
         </div>
 
@@ -216,19 +229,6 @@ export default function ProjectorPage() {
             </p>
             <p className="text-xs text-muted-foreground mt-2">
               Enter in app if camera unavailable
-            </p>
-          </div>
-
-          {/* Password */}
-          <div className="bg-card border border-border rounded-2xl p-6">
-            <p className="text-xs text-muted-foreground uppercase tracking-widest font-medium mb-2">
-              Password / Passcode
-            </p>
-            <p className="font-mono text-4xl xl:text-5xl font-bold tracking-wider text-foreground">
-              {data.passwordCode}
-            </p>
-            <p className="text-xs text-muted-foreground mt-2">
-              Enter after scanning QR
             </p>
           </div>
 

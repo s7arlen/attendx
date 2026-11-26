@@ -34,13 +34,9 @@ export default function TeacherDashboard() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Welcome back, {user?.name?.split(' ')[0]} 👋</h1>
-          <p className="text-muted-foreground text-sm mt-1">Here's your teaching overview</p>
+          <h1 className="text-2xl font-bold">Welcome back, {user?.name?.split(' ')[0]}</h1>
+          <p className="text-muted-foreground text-sm mt-1">Teaching overview</p>
         </div>
-        <Badge variant="success" className="hidden sm:flex items-center gap-1.5 px-3 py-1.5">
-          <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-          Online
-        </Badge>
       </div>
 
       {/* Stats */}
@@ -71,15 +67,15 @@ export default function TeacherDashboard() {
               <AreaChart data={analytics?.attendanceTrend || []}>
                 <defs>
                   <linearGradient id="teacherGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#2563EB" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
+                    <stop offset="5%" stopColor="#F43F5E" stopOpacity={0.35} />
+                    <stop offset="95%" stopColor="#F97316" stopOpacity={0.02} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.6} />
                 <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} tickFormatter={(v) => v.slice(5)} />
                 <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
-                <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '12px' }} />
-                <Area type="monotone" dataKey="present" stroke="#2563EB" strokeWidth={2} fill="url(#teacherGrad)" />
+                <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '16px' }} />
+                <Area type="monotone" dataKey="present" stroke="#F43F5E" strokeWidth={2.5} fill="url(#teacherGrad)" />
               </AreaChart>
             </ResponsiveContainer>
           )}

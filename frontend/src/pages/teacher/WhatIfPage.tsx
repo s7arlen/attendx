@@ -64,14 +64,14 @@ export default function WhatIfPage() {
         <p className="text-sm text-muted-foreground mt-1">Adjust hypothetical academic values to see how they affect risk assessment</p>
       </div>
 
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
-        <Info className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
-        <p className="text-sm text-amber-800"><strong>Simulation only</strong> — these values are never saved to the database or used in real assessments.</p>
+      <div className="bg-amber-500/10 border border-amber-500/25 rounded-2xl p-4 flex items-start gap-3">
+        <Info className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+        <p className="text-sm text-amber-600 dark:text-amber-400"><strong>Simulation only.</strong> Values are not saved to academic records.</p>
       </div>
 
       <div className="grid sm:grid-cols-2 gap-6">
         {/* Controls */}
-        <div className="bg-card border rounded-xl p-5 space-y-5">
+        <div className="glass-card border rounded-2xl p-5 space-y-5">
           <div>
             <label className="text-sm font-medium">Select Student</label>
             <select value={selectedStudentId} onChange={e => setSelectedStudentId(e.target.value)}

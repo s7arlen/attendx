@@ -1,6 +1,6 @@
 import { AuditLog } from '../models/AuditLog.model';
 import { Request } from 'express';
-import { AuthRequest } from '../middleware/auth.middleware';
+import { getTrustedClientIp } from './security';
 
 export const createAuditLog = async (
   userId: string,
@@ -26,9 +26,5 @@ export const createAuditLog = async (
 };
 
 export const getClientIp = (req: Request): string => {
-  return (
-    (req.headers['x-forwarded-for'] as string)?.split(',')[0] ||
-    req.socket.remoteAddress ||
-    'unknown'
-  );
+  return getTrustedClientIp(req);
 };

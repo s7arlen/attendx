@@ -4,10 +4,10 @@ import { academicService } from '@/services/academic.service'
 import { RiskLevel, ContributingFactor } from '@/types'
 
 const RISK_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
-  HIGH:       { label: 'High Risk',     color: 'text-red-700',   bg: 'bg-red-50',    border: 'border-red-200' },
-  MODERATE:   { label: 'Moderate Risk', color: 'text-amber-700', bg: 'bg-amber-50',  border: 'border-amber-200' },
-  LOW:        { label: 'Low Risk',      color: 'text-green-700', bg: 'bg-green-50',  border: 'border-green-200' },
-  UNASSESSED: { label: 'Not Assessed',  color: 'text-slate-500', bg: 'bg-slate-50',  border: 'border-slate-200' },
+  HIGH:       { label: 'High Risk',     color: 'text-red-500',            bg: 'bg-red-500/10',     border: 'border-red-500/25' },
+  MODERATE:   { label: 'Moderate Risk', color: 'text-amber-500',          bg: 'bg-amber-500/10',   border: 'border-amber-500/25' },
+  LOW:        { label: 'Low Risk',      color: 'text-emerald-500',        bg: 'bg-emerald-500/10', border: 'border-emerald-500/25' },
+  UNASSESSED: { label: 'Not Assessed',  color: 'text-muted-foreground',   bg: 'bg-muted/40',       border: 'border-border' },
 }
 
 function ProgressBar({ value, color }: { value: number; color: string }) {
@@ -49,16 +49,16 @@ export default function AcademicProfilePage() {
 
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2"><Brain className="w-6 h-6 text-primary" /> Academic Profile</h1>
-        <p className="text-sm text-muted-foreground mt-1">Your academic performance and AI risk assessment</p>
+        <p className="text-sm text-muted-foreground mt-1">Academic performance and risk assessment</p>
       </div>
 
       {/* Risk Assessment Card */}
-      <div className={`rounded-xl border p-5 ${riskCfg.bg} ${riskCfg.border}`}>
+      <div className={`glass-card rounded-2xl border p-5 ${riskCfg.bg} ${riskCfg.border}`}>
         <div className="flex items-start justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Academic Risk Assessment</p>
+            <p className="text-xs font-medium text-muted-foreground mb-1">Academic Risk Assessment</p>
             <p className={`text-2xl font-bold ${riskCfg.color}`}>{riskCfg.label}</p>
-            {risk && <p className="text-xs text-muted-foreground mt-1">Rule-Based Assessment · Last updated: {new Date(risk.createdAt).toLocaleDateString()}</p>}
+            {risk && <p className="text-xs text-muted-foreground mt-1">Last updated: {new Date(risk.createdAt).toLocaleDateString()}</p>}
           </div>
           {risk && (
             <div className="text-right">

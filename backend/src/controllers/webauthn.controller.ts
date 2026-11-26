@@ -16,11 +16,13 @@ import { AttendanceRecord } from '../models/AttendanceRecord.model';
 import { Subject } from '../models/Subject.model';
 import { createAuditLog, getClientIp } from '../utils/auditLogger';
 import { emitToSession } from '../config/socket';
+import { getAllowedOrigins, isValidObjectId } from '../utils/security';
 import { Server } from 'socket.io';
 
 const RP_NAME = 'AttendX';
-const RP_ID   = process.env.WEBAUTHN_RP_ID  || 'localhost';
+const RP_ID   = process.env.WEBAUTHN_RP_ID || 'localhost';
 const ORIGIN  = process.env.WEBAUTHN_ORIGIN || 'http://localhost:5173';
+const getExpectedOrigins = (): string[] => Array.from(new Set([ORIGIN, ...getAllowedOrigins()]));
 
 // ── REGISTRATION: Begin ──────────────────────────────────────────────────────
 export const beginRegistration = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -54,7 +56,8 @@ export const beginRegistration = async (req: AuthRequest, res: Response): Promis
 
     res.json({ success: true, data: options });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    const message = process.env.NODE_ENV === 'production' ? 'Failed to start biometric registration' : error.message;
+    res.status(500).json({ success: false, message });
   }
 };
 
@@ -71,7 +74,7 @@ export const completeRegistration = async (req: AuthRequest, res: Response): Pro
     const verification = await verifyRegistrationResponse({
       response:                body,
       expectedChallenge:       user.webauthnChallenge,
-      expectedOrigin:          ORIGIN,
+      expectedOrigin:          getExpectedOrigins(),
       expectedRPID:            RP_ID,
       requireUserVerification: true,
     });
@@ -102,7 +105,8 @@ export const completeRegistration = async (req: AuthRequest, res: Response): Pro
 
     res.json({ success: true, message: 'Biometric registered successfully' });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    const message = process.env.NODE_ENV === 'production' ? 'Failed to complete biometric registration' : error.message;
+    res.status(500).json({ success: false, message });
   }
 };
 
@@ -133,7 +137,8 @@ export const beginAuthentication = async (req: AuthRequest, res: Response): Prom
 
     res.json({ success: true, data: options });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    const message = process.env.NODE_ENV === 'production' ? 'Failed to start biometric authentication' : error.message;
+    res.status(500).json({ success: false, message });
   }
 };
 
@@ -147,8 +152,12 @@ export const verifyAttendanceWithBiometric = async (req: AuthRequest, res: Respo
       assertion:   AuthenticationResponseJSON;
     };
 
-    if (!sessionId || !secureToken || !assertion) {
+    if (!sessionId || !secureToken || !assertion || typeof secureToken !== 'string') {
       res.status(400).json({ success: false, message: 'Missing required fields' }); return;
+    }
+
+    if (!isValidObjectId(sessionId)) {
+      res.status(400).json({ success: false, message: 'Invalid session ID' }); return;
     }
 
     // 1 — Validate session
@@ -181,7 +190,7 @@ export const verifyAttendanceWithBiometric = async (req: AuthRequest, res: Respo
     const verification = await verifyAuthenticationResponse({
       response:              assertion,
       expectedChallenge:     user.webauthnChallenge,
-      expectedOrigin:        ORIGIN,
+      expectedOrigin:        getExpectedOrigins(),
       expectedRPID:          RP_ID,
       requireUserVerification: true,
       authenticator: {
@@ -208,17 +217,47 @@ export const verifyAttendanceWithBiometric = async (req: AuthRequest, res: Respo
       res.status(404).json({ success: false, message: 'Subject or student not found' }); return;
     }
 
+    // Grace period check
+    const effectiveExpiry = new Date(
+      session.expiryTime.getTime() + (session.gracePeriodMinutes || 0) * 60 * 1000
+    );
+    const isLate = session.status !== 'active' && new Date() <= effectiveExpiry;
+
+    // Capacity check
+    if (session.capacity && session.totalPresent >= session.capacity) {
+      res.status(400).json({ success: false, message: `Session is at full capacity (${session.capacity})` }); return;
+    }
+
+    // Verification mode check
+    if (session.verificationMode === 'strict') {
+      if (
+        student.department !== subject.department ||
+        student.year !== subject.year ||
+        student.section !== subject.section
+      ) {
+        res.status(403).json({ success: false, message: 'You are not enrolled in this class section' }); return;
+      }
+    } else if (session.verificationMode === 'invite') {
+      const roll = student.rollNumber?.toUpperCase() || '';
+      if (!session.inviteList.includes(roll)) {
+        res.status(403).json({ success: false, message: 'You are not on the invite list for this session' }); return;
+      }
+    }
+
     const record = await AttendanceRecord.create({
       studentId:          req.user!.userId,
       sessionId:          session._id,
       subjectId:          session.subjectId,
       timestamp:          new Date(),
       verificationStatus: 'verified',
+      verificationMethod: 'biometric',
+      isLate,
       ipAddress:          getClientIp(req),
     });
 
-    session.totalPresent += 1;
-    await session.save();
+    // Atomic increment
+    await AttendanceSession.findByIdAndUpdate(sessionId, { $inc: { totalPresent: 1 } });
+    const updatedSession = await AttendanceSession.findById(sessionId).select('totalPresent');
 
     const io: Server = req.app.get('io');
     emitToSession(io, sessionId, 'attendance:marked', {
@@ -227,24 +266,44 @@ export const verifyAttendanceWithBiometric = async (req: AuthRequest, res: Respo
       rollNumber:   student.rollNumber,
       year:         student.year,
       section:      student.section,
+      isLate,
       timestamp:    record.timestamp,
-      totalPresent: session.totalPresent,
+      totalPresent: updatedSession?.totalPresent ?? session.totalPresent + 1,
       method:       'biometric',
     });
 
-    await createAuditLog(req.user!.userId, 'MARK_ATTENDANCE_BIOMETRIC', 'AttendanceRecord', record._id.toString(), { sessionId }, getClientIp(req));
+    await createAuditLog(req.user!.userId, 'MARK_ATTENDANCE_BIOMETRIC', 'AttendanceRecord', record._id.toString(), { sessionId, isLate }, getClientIp(req));
+
+    // Notify student
+    const { Notification } = await import('../models/Notification.model');
+    await Notification.create({
+      userId: req.user!.userId,
+      title: 'Attendance Marked',
+      message: `Your attendance for ${subject.subjectName} has been recorded via biometrics${isLate ? ' (late entry)' : ''}.`,
+      type: 'success',
+      link: '/student/attendance',
+    });
+
+    // Background risk reassessment
+    import('../controllers/academic.controller')
+      .then(m => m.triggerRiskAssessment(req.user!.userId))
+      .catch(() => {});
 
     res.json({
       success: true,
-      message: 'Attendance marked via biometric',
+      message: `Attendance marked via biometric${isLate ? ' (late entry accepted)' : ''}`,
       data: {
         record,
+        isLate,
         subject: { subjectName: subject.subjectName, subjectCode: subject.subjectCode },
         timestamp: record.timestamp,
+        sessionType: session.sessionType,
+        venue: session.venue,
       },
     });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    const message = process.env.NODE_ENV === 'production' ? 'Biometric verification failed' : error.message;
+    res.status(500).json({ success: false, message });
   }
 };
 
@@ -266,7 +325,8 @@ export const getBiometricStatus = async (req: AuthRequest, res: Response): Promi
       },
     });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    const message = process.env.NODE_ENV === 'production' ? 'Failed to fetch biometric status' : error.message;
+    res.status(500).json({ success: false, message });
   }
 };
 
@@ -287,6 +347,7 @@ export const removeCredential = async (req: AuthRequest, res: Response): Promise
     await user.save();
     res.json({ success: true, message: 'Biometric credential removed' });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    const message = process.env.NODE_ENV === 'production' ? 'Failed to remove biometric credential' : error.message;
+    res.status(500).json({ success: false, message });
   }
 };

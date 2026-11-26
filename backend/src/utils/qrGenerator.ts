@@ -1,5 +1,4 @@
 import QRCode from 'qrcode';
-import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 
 interface QRPayload {
@@ -14,22 +13,17 @@ export const generateSecureToken = (): string => {
 };
 
 export const generateSessionCode = (subjectCode: string): string => {
-  const randomPart = Math.random().toString(36).substring(2, 6).toUpperCase();
-  return `${subjectCode}-${randomPart}`;
-};
-
-export const generatePasswordCode = (subjectCode: string): string => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let password = '';
-  for (let i = 0; i < 4; i++) {
-    password += chars.charAt(Math.floor(Math.random() * chars.length));
+  let randomPart = '';
+  for (let i = 0; i < 6; i++) {
+    randomPart += chars.charAt(crypto.randomInt(0, chars.length));
   }
-  return `${subjectCode}-${password}`;
+  return `${subjectCode}-${randomPart}`;
 };
 
 export const generateQRCode = async (payload: QRPayload): Promise<string> => {
   const qrData = JSON.stringify(payload);
-  const qrCodeDataUrl = await QRCode.toDataURL(qrData, {
+  return QRCode.toDataURL(qrData, {
     errorCorrectionLevel: 'H',
     type: 'image/png',
     width: 400,
@@ -39,7 +33,6 @@ export const generateQRCode = async (payload: QRPayload): Promise<string> => {
       light: '#ffffff',
     },
   });
-  return qrCodeDataUrl;
 };
 
 export const generateSessionAssets = async (
@@ -48,7 +41,6 @@ export const generateSessionAssets = async (
   subjectCode: string
 ) => {
   const secureToken = generateSecureToken();
-  const passwordCode = generatePasswordCode(subjectCode);
   const sessionCode = generateSessionCode(subjectCode);
 
   const qrPayload: QRPayload = {
@@ -62,7 +54,6 @@ export const generateSessionAssets = async (
 
   return {
     secureToken,
-    passwordCode,
     sessionCode,
     qrCodeData,
     qrPayload,
@@ -71,7 +62,7 @@ export const generateSessionAssets = async (
 
 /**
  * Regenerate only the secure token + QR image for an existing session.
- * Called every 20 seconds to invalidate old QR screenshots.
+ * Called every N seconds to invalidate old QR screenshots.
  */
 export const generateFreshQR = async (
   sessionId: string,

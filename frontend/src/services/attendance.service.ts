@@ -39,16 +39,6 @@ export const attendanceService = {
     return res.data.data;
   },
 
-  verifyAttendance: async (data: {
-    sessionId: string;
-    subjectId: string;
-    secureToken: string;
-    passwordCode: string;
-  }) => {
-    const res = await api.post('/attendance/verify', data);
-    return res.data;
-  },
-
   getAttendanceHistory: async (params?: { subjectId?: string; page?: number; limit?: number }) => {
     const res = await api.get('/attendance/history', { params });
     return res.data.data;
@@ -72,5 +62,21 @@ export const attendanceService = {
   getAttendanceReceipt: async (sessionId: string) => {
     const res = await api.get(`/attendance/receipt/${sessionId}`);
     return res.data.data;
+  },
+
+  // Facial Recognition
+  registerFace: async (faceDescriptor: number[]) => {
+    const res = await api.post('/attendance/face/register', { faceDescriptor });
+    return res.data;
+  },
+
+  verifyAttendanceWithFace: async (data: {
+    sessionId: string;
+    subjectId: string;
+    secureToken: string;
+    faceDescriptor: number[];
+  }) => {
+    const res = await api.post('/attendance/face/verify', data);
+    return res.data;
   },
 };

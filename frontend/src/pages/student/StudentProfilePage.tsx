@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Fingerprint, Smartphone, Trash2, ShieldCheck, ShieldAlert, User, Mail, Hash, Building2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -6,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useAuthStore } from '@/store/authStore'
 import { webauthnService } from '@/services/webauthn.service'
+import { authService } from '@/services/auth.service'
 import { ProfileEditCard, ChangePasswordCard } from '@/components/shared/ProfileEditor'
 import AvatarUpload from '@/components/shared/AvatarUpload'
 import { toast } from '@/hooks/useToast'
@@ -13,9 +15,13 @@ import { formatDate } from '@/lib/utils'
 import { ApiError } from '@/types'
 
 export default function StudentProfilePage() {
-  const { user } = useAuthStore()
+  const { user, logout } = useAuthStore()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [registering, setRegistering] = useState(false)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+  const [deletePassword, setDeletePassword] = useState('')
+  const [deleting, setDeleting] = useState(false)
 
   const { data: bioStatus, isLoading: bioLoading } = useQuery({
     queryKey: ['webauthn-status'],
@@ -173,6 +179,80 @@ export default function StudentProfilePage() {
           <p className="text-xs text-muted-foreground text-center">
             Your biometric data never leaves this device. Only a secure cryptographic key is stored on our server.
           </p>
+        </CardContent>
+      </Card>
+
+      {/* Account Deletion */}
+      <Card className="border-destructive/30">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base text-destructive">
+            <Trash2 className="w-4 h-4" aria-hidden="true" />
+            Delete Account
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Permanently remove your AttendX account and associated attendance, assessment, and notification records. This action cannot be undone.
+          </p>
+          {!confirmDeleteOpen ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="border-destructive/40 text-destructive hover:bg-destructive/10"
+              onClick={() => setConfirmDeleteOpen(true)}
+            >
+              Delete My Account
+            </Button>
+          ) : (
+            <form
+              className="space-y-3 pt-1"
+              onSubmit={async (e) => {
+                e.preventDefault()
+                if (!deletePassword.trim()) {
+                  toast({ title: 'Password required', description: 'Enter your current password to confirm deletion.', variant: 'destructive' })
+                  return
+                }
+                setDeleting(true)
+                try {
+                  await authService.deleteAccount(deletePassword)
+                  toast({ title: 'Account deleted', description: 'Your account and personal records have been removed.', variant: 'success' })
+                  logout()
+                  navigate('/login')
+                } catch (err) {
+                  const error = err as ApiError
+                  toast({ title: 'Deletion failed', description: error.response?.data?.message || 'Could not delete account.', variant: 'destructive' })
+                } finally {
+                  setDeleting(false)
+                }
+              }}
+            >
+              <input
+                type="password"
+                value={deletePassword}
+                onChange={(e) => setDeletePassword(e.target.value)}
+                placeholder="Confirm with your current password"
+                autoComplete="current-password"
+                className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-destructive/40"
+              />
+              <div className="flex items-center gap-2">
+                <Button type="submit" variant="destructive" size="sm" loading={deleting}>
+                  Confirm Permanent Deletion
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={deleting}
+                  onClick={() => {
+                    setConfirmDeleteOpen(false)
+                    setDeletePassword('')
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          )}
         </CardContent>
       </Card>
     </div>

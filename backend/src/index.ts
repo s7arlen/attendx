@@ -9,6 +9,8 @@ import dotenv from 'dotenv';
 import { connectDB } from './config/database';
 import { setupSocketIO } from './config/socket';
 import { generalLimiter } from './middleware/rateLimiter';
+import { authenticate, authorize } from './middleware/auth.middleware';
+import { getAllowedOrigins, hashSha256, safeEqualHex, validateSecurityEnv } from './utils/security';
 import authRoutes from './routes/auth.routes';
 import adminRoutes from './routes/admin.routes';
 import teacherRoutes from './routes/teacher.routes';
@@ -34,9 +36,21 @@ app.set('trust proxy', 1);
 
 const httpServer = createServer(app);
 
+const allowedOrigins = getAllowedOrigins();
+const corsOriginCallback = (
+  origin: string | undefined,
+  callback: (err: Error | null, allow?: boolean) => void
+) => {
+  if (!origin || allowedOrigins.includes(origin)) {
+    callback(null, true);
+  } else {
+    callback(new Error('Origin not allowed by CORS'));
+  }
+};
+
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    origin: corsOriginCallback,
     methods: ['GET', 'POST'],
     credentials: true,
   },
@@ -51,7 +65,7 @@ app.use(helmet({
 }));
 
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: corsOriginCallback,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -60,8 +74,11 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Serve uploaded avatar files
-app.use('/uploads', express.static('uploads'));
+// Serve uploaded avatar files safely
+app.use('/uploads', (_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  next();
+}, express.static('uploads', { dotfiles: 'deny' }));
 
 // Rate limiting
 app.use('/api/', generalLimiter);
@@ -88,25 +105,32 @@ app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString(), service: 'AttendX API' });
 });
 
-// Manual trigger for attendance alert (admin only — for testing)
-app.post('/admin-trigger/attendance-alert', async (req, res) => {
-  const secret = req.headers['x-trigger-secret'];
-  if (secret !== process.env.JWT_SECRET) {
-    res.status(401).json({ success: false, message: 'Unauthorized' });
+// Manual trigger for attendance alert or auto sessions (admin JWT OR dedicated CRON_TRIGGER_SECRET)
+const verifyTriggerAuth = (req: express.Request, res: express.Response, next: express.NextFunction): void => {
+  const secretHeader = req.headers['x-trigger-secret'];
+  const configuredSecret = process.env.CRON_TRIGGER_SECRET;
+  if (
+    configuredSecret &&
+    configuredSecret.length >= 16 &&
+    typeof secretHeader === 'string' &&
+    safeEqualHex(hashSha256(secretHeader), hashSha256(configuredSecret))
+  ) {
+    next();
     return;
   }
+
+  authenticate(req as any, res, () => {
+    authorize('admin')(req as any, res, next);
+  });
+};
+
+app.post('/admin-trigger/attendance-alert', verifyTriggerAuth, async (_req, res) => {
   const { checkAndAlert } = await import('./jobs/attendanceAlert');
   await checkAndAlert();
   res.json({ success: true, message: 'Attendance alert job triggered manually' });
 });
 
-// Manual trigger for auto sessions (admin only — for testing)
-app.post('/admin-trigger/auto-session', async (req, res) => {
-  const secret = req.headers['x-trigger-secret'];
-  if (secret !== process.env.JWT_SECRET) {
-    res.status(401).json({ success: false, message: 'Unauthorized' });
-    return;
-  }
+app.post('/admin-trigger/auto-session', verifyTriggerAuth, async (_req, res) => {
   const { autoStartSessions, autoEndSessions } = await import('./jobs/autoSession');
   await autoStartSessions();
   await autoEndSessions();
@@ -119,6 +143,7 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
+  validateSecurityEnv();
   await connectDB();
   httpServer.listen(PORT, () => {
     console.log(`[server] AttendX running on port ${PORT}`);

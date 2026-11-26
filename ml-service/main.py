@@ -3,10 +3,11 @@ AttendX 2.0 — ML Prediction FastAPI Service
 Provides risk assessment via trained ML model with rule-based fallback.
 """
 
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional
+import hmac
 import joblib
 import json
 import os
@@ -16,18 +17,40 @@ from datetime import datetime
 MODEL_PATH = os.path.join(os.path.dirname(__file__), 'models', 'risk_model.joblib')
 META_PATH  = os.path.join(os.path.dirname(__file__), 'models', 'model_metadata.json')
 
+IS_PRODUCTION = os.getenv("ENV", "").lower() == "production" or os.getenv("RENDER", "").lower() == "true"
+ENABLE_DOCS   = os.getenv("ENABLE_DOCS", "").lower() == "true"
+
 app = FastAPI(
     title="AttendX ML Prediction Service",
     description="Academic risk assessment — Rule-Based + ML Model",
-    version="2.0"
+    version="2.0",
+    docs_url="/docs" if (not IS_PRODUCTION or ENABLE_DOCS) else None,
+    redoc_url="/redoc" if (not IS_PRODUCTION or ENABLE_DOCS) else None,
+    openapi_url="/openapi.json" if (not IS_PRODUCTION or ENABLE_DOCS) else None,
 )
+
+raw_origins = os.getenv("ALLOWED_ORIGINS", "")
+allowed_origins = [o.strip().rstrip("/") for o in raw_origins.split(",") if o.strip()]
+if not allowed_origins and not IS_PRODUCTION:
+    allowed_origins = ["http://localhost:5173", "http://localhost:5000"]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=allowed_origins,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "X-ML-API-Key"],
 )
+
+
+def verify_ml_api_key(x_ml_api_key: Optional[str] = Header(default=None, alias="X-ML-API-Key")):
+    expected = os.getenv("ML_API_KEY", "")
+    if not expected:
+        if IS_PRODUCTION:
+            raise HTTPException(status_code=503, detail="ML service authentication not configured")
+        return
+    if not x_ml_api_key or not hmac.compare_digest(x_ml_api_key, expected):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
 
 # Load model at startup
 model = None
@@ -38,9 +61,9 @@ def load_model():
     global model, metadata
     if os.path.exists(MODEL_PATH):
         model = joblib.load(MODEL_PATH)
-        print("✅ ML model loaded")
+        print("ML model loaded")
     else:
-        print("⚠️  No trained model found — using rule-based fallback")
+        print("No trained model found — using rule-based fallback")
     if os.path.exists(META_PATH):
         with open(META_PATH) as f:
             metadata = json.load(f)
@@ -187,11 +210,11 @@ def root():
 def health():
     return {"status": "OK", "model_loaded": model is not None, "timestamp": datetime.now().isoformat()}
 
-@app.get("/model/info")
+@app.get("/model/info", dependencies=[Depends(verify_ml_api_key)])
 def model_info():
     return {"model_loaded": model is not None, "metadata": metadata}
 
-@app.post("/predict", response_model=PredictResponse)
+@app.post("/predict", response_model=PredictResponse, dependencies=[Depends(verify_ml_api_key)])
 def predict(req: PredictRequest):
     """
     Predict academic risk for a student.
@@ -227,12 +250,14 @@ def predict(req: PredictRequest):
         predictionTimestamp = datetime.now().isoformat(),
     )
 
-@app.post("/predict/batch")
+@app.post("/predict/batch", dependencies=[Depends(verify_ml_api_key)])
 def predict_batch(requests: list[PredictRequest]):
-    """Batch predict for multiple students."""
+    """Batch predict for multiple students (max 100 per call)."""
+    if len(requests) > 100:
+        raise HTTPException(status_code=400, detail="Batch size cannot exceed 100 requests")
     return [predict(r) for r in requests]
 
-@app.get("/model/evaluate")
+@app.get("/model/evaluate", dependencies=[Depends(verify_ml_api_key)])
 def evaluate():
     """Return model evaluation metrics."""
     if not metadata:
@@ -249,4 +274,4 @@ def evaluate():
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port)
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)

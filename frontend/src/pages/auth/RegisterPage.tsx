@@ -80,13 +80,13 @@ export default function RegisterPage() {
           <div className="w-10 h-10 gradient-bg rounded-xl flex items-center justify-center">
             <QrCode className="w-6 h-6 text-white" />
           </div>
-          <span className="text-2xl font-bold gradient-text">AttendX</span>
+          <span className="text-2xl font-bold text-foreground">AttendX</span>
         </div>
 
-        <div className="bg-card border rounded-2xl p-8 shadow-xl">
+        <div className="glass-card border rounded-3xl p-8 shadow-xl">
           <div className="mb-6">
-            <h2 className="text-2xl font-bold">Create your account</h2>
-            <p className="text-muted-foreground mt-1 text-sm">Join AttendX and start tracking attendance</p>
+            <h2 className="text-2xl font-bold">Create account</h2>
+            <p className="text-muted-foreground mt-1 text-sm">Enter your institutional details</p>
           </div>
 
           {/* Role selector */}

@@ -3,7 +3,7 @@
  * Available for students and teachers on all dashboard pages.
  */
 import { useState, useEffect, useRef } from 'react'
-import { MessageCircle, X, Send, Loader2, Bot, Sparkles } from 'lucide-react'
+import { MessageCircle, X, Send, Loader2, Bot } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { cn } from '@/lib/utils'
 import api from '@/lib/axios'
@@ -75,8 +75,8 @@ export default function ChatBot() {
   useEffect(() => {
     if (open && messages.length === 0) {
       const welcome = user.role === 'student'
-        ? `Hi ${user.name?.split(' ')[0]} 👋 I'm your AttendX assistant!\n\nAsk me about your attendance, marks, risk level, or recommendations.`
-        : `Hi ${user.name?.split(' ')[0]} 👋 I can help you with at-risk students, subject overviews, and pending interventions.`
+        ? `Hi ${user.name?.split(' ')[0]}. Ask about your attendance, marks, or schedule.`
+        : `Hi ${user.name?.split(' ')[0]}. Ask about student risk, subject stats, or interventions.`
       setMessages([{
         id: '0',
         role: 'bot',
@@ -126,16 +126,15 @@ export default function ChatBot() {
     <>
       {/* Chat panel */}
       {open && (
-        <div className="fixed bottom-20 right-4 sm:right-6 z-50 w-[calc(100vw-2rem)] max-w-sm flex flex-col bg-card border border-border rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 duration-200">
+        <div className="fixed bottom-20 right-4 sm:right-6 z-50 w-[calc(100vw-2rem)] max-w-sm flex flex-col glass-card border rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 duration-200">
 
           {/* Header */}
-          <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-primary text-primary-foreground">
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-white/15 gradient-sunset text-white">
             <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center">
               <Bot className="w-4 h-4" />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold">AttendX Assistant</p>
-              <p className="text-xs opacity-75">Ask me anything</p>
             </div>
             <button onClick={() => setOpen(false)} className="opacity-75 hover:opacity-100 transition-opacity">
               <X className="w-4 h-4" />
@@ -225,10 +224,10 @@ export default function ChatBot() {
       {/* FAB toggle button */}
       <button
         onClick={() => setOpen(o => !o)}
-        aria-label={open ? 'Close chat' : 'Open AI assistant'}
+        aria-label={open ? 'Close chat' : 'Open assistant'}
         className={cn(
           'fixed bottom-4 right-4 sm:right-6 z-50 w-13 h-13 rounded-2xl shadow-xl transition-all duration-200 flex items-center justify-center',
-          'bg-primary text-primary-foreground hover:scale-105 active:scale-95',
+          'gradient-sunset text-white hover:scale-105 active:scale-95',
           open && 'rotate-0'
         )}
         style={{ width: 52, height: 52 }}
@@ -240,11 +239,6 @@ export default function ChatBot() {
         {!open && unread > 0 && (
           <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center ring-2 ring-card">
             {unread}
-          </span>
-        )}
-        {!open && (
-          <span className="absolute -top-1 -left-1 w-4 h-4 bg-emerald-400 rounded-full flex items-center justify-center">
-            <Sparkles className="w-2.5 h-2.5 text-white" />
           </span>
         )}
       </button>

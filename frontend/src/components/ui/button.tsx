@@ -5,27 +5,30 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium ring-offset-background transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-medium ring-offset-background transition-all duration-200 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
   {
     variants: {
       variant: {
-        default: 'bg-primary text-primary-foreground shadow hover:bg-primary/90 hover:shadow-lg',
+        default: 'bg-primary text-primary-foreground shadow-sm shadow-rose-950/20 hover:bg-rose-600 hover:shadow-md hover:shadow-rose-500/20',
         destructive: 'bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90',
-        outline: 'border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground',
-        secondary: 'bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80',
-        ghost: 'hover:bg-accent hover:text-accent-foreground',
+        outline: 'border border-border/80 bg-background/50 backdrop-blur-md shadow-sm hover:bg-accent/80 hover:text-accent-foreground hover:border-rose-500/30',
+        secondary: 'bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80 hover:border-rose-500/20',
+        ghost: 'hover:bg-accent/70 hover:text-accent-foreground',
         link: 'text-primary underline-offset-4 hover:underline',
-        gradient: 'gradient-bg text-white shadow hover:shadow-lg hover:opacity-90',
+        gradient: 'gradient-sunset text-white shadow-md shadow-rose-950/25 hover:opacity-95 hover:shadow-lg hover:shadow-rose-500/30',
+        sunset: 'gradient-sunset text-white shadow-md shadow-rose-950/25 hover:opacity-95 hover:shadow-lg hover:shadow-rose-500/30',
+        glass: 'bg-white/10 dark:bg-white/[0.06] backdrop-blur-md border border-white/20 dark:border-white/10 text-foreground hover:bg-white/20 dark:hover:bg-white/[0.12] hover:border-rose-500/30 shadow-sm',
+        glow: 'gradient-sunset text-white shadow-[0_0_24px_rgba(244,63,94,0.45)] hover:shadow-[0_0_32px_rgba(244,63,94,0.6)]',
         success: 'bg-emerald-500 text-white shadow hover:bg-emerald-600',
         warning: 'bg-amber-500 text-white shadow hover:bg-amber-600',
       },
       size: {
         default: 'h-10 px-4 py-2',
-        sm: 'h-8 rounded-md px-3 text-xs',
-        lg: 'h-12 rounded-lg px-8 text-base',
-        xl: 'h-14 rounded-xl px-10 text-lg',
+        sm: 'h-8 rounded-lg px-3 text-xs',
+        lg: 'h-11 rounded-xl px-7 text-sm font-semibold',
+        xl: 'h-13 rounded-2xl px-9 text-base font-semibold',
         icon: 'h-10 w-10',
-        'icon-sm': 'h-8 w-8 rounded-md',
+        'icon-sm': 'h-8 w-8 rounded-lg',
       },
     },
     defaultVariants: {
@@ -58,9 +61,11 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
             </svg>
-            {children}
+            <span>{children}</span>
           </>
-        ) : children}
+        ) : (
+          children
+        )}
       </Comp>
     )
   }

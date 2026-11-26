@@ -2,8 +2,7 @@ import { Router, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { authenticate } from '../middleware/auth.middleware';
-import { AuthRequest } from '../middleware/auth.middleware';
+import { authenticate, AuthRequest } from '../middleware/auth.middleware';
 import { User } from '../models/User.model';
 import { cloudinary, isCloudinaryConfigured } from '../utils/cloudinary';
 
@@ -11,33 +10,48 @@ const router = Router();
 router.use(authenticate);
 
 // ── Storage strategy ──────────────────────────────────────────────────────────
-// If Cloudinary env vars are set → upload to Cloudinary (production)
-// Otherwise → save to local disk under uploads/avatars/ (development)
-
-const localDir = path.join(process.cwd(), 'uploads', 'avatars');
+// Always buffer in memory first so magic bytes can be verified before persisting.
+const localDir = path.resolve(process.cwd(), 'uploads', 'avatars');
 if (!fs.existsSync(localDir)) fs.mkdirSync(localDir, { recursive: true });
 
-const localStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, localDir),
-  filename: (req: any, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, `avatar-${req.user!.userId}-${Date.now()}${ext}`);
-  },
-});
-
-// Memory storage is used when uploading to Cloudinary (no disk write)
-const memoryStorage = multer.memoryStorage();
+const detectImageExtension = (buffer: Buffer): '.jpg' | '.png' | '.webp' | null => {
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return '.jpg';
+  }
+  if (
+    buffer.length >= 8 &&
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0x0a
+  ) {
+    return '.png';
+  }
+  if (
+    buffer.length >= 12 &&
+    buffer.toString('ascii', 0, 4) === 'RIFF' &&
+    buffer.toString('ascii', 8, 12) === 'WEBP'
+  ) {
+    return '.webp';
+  }
+  return null;
+};
 
 const fileFilter: multer.Options['fileFilter'] = (_req, file, cb) => {
-  const allowed = ['.jpg', '.jpeg', '.png', '.webp'];
+  const allowedExt = ['.jpg', '.jpeg', '.png', '.webp'];
+  const allowedMime = ['image/jpeg', 'image/png', 'image/webp'];
   const ext = path.extname(file.originalname).toLowerCase();
-  if (allowed.includes(ext)) cb(null, true);
+  if (allowedExt.includes(ext) && allowedMime.includes(file.mimetype)) cb(null, true);
   else cb(new Error('Only JPG, PNG and WebP images are allowed'));
 };
 
 const upload = multer({
-  storage: isCloudinaryConfigured() ? memoryStorage : localStorage,
-  limits:  { fileSize: 2 * 1024 * 1024 }, // 2 MB
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB
   fileFilter,
 });
 
@@ -49,16 +63,21 @@ router.post('/avatar', upload.single('avatar'), async (req: AuthRequest, res: Re
       return;
     }
 
+    const detectedExt = detectImageExtension(req.file.buffer);
+    if (!detectedExt) {
+      res.status(400).json({ success: false, message: 'Invalid image file signature. Only JPG, PNG and WebP images are allowed' });
+      return;
+    }
+
     let avatarUrl: string;
 
     if (isCloudinaryConfigured()) {
-      // ── Cloudinary upload ──────────────────────────────────────────────────
       const result = await new Promise<any>((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
           {
-            folder:         'attendx/avatars',
-            public_id:      `avatar-${req.user!.userId}`,
-            overwrite:      true,                 // replace previous avatar
+            folder: 'attendx/avatars',
+            public_id: `avatar-${req.user!.userId}`,
+            overwrite: true,
             transformation: [
               { width: 400, height: 400, crop: 'fill', gravity: 'face' },
               { quality: 'auto', fetch_format: 'auto' },
@@ -73,21 +92,24 @@ router.post('/avatar', upload.single('avatar'), async (req: AuthRequest, res: Re
       });
       avatarUrl = result.secure_url;
     } else {
-      // ── Local disk (dev) ───────────────────────────────────────────────────
-      // Delete old local avatar if it was a previous upload
       const user = await User.findById(req.user!.userId);
-      if (user?.avatar && user.avatar.startsWith('/uploads/')) {
-        const oldPath = path.join(process.cwd(), user.avatar);
-        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+      if (user?.avatar && user.avatar.startsWith('/uploads/avatars/')) {
+        const oldPath = path.resolve(process.cwd(), user.avatar.replace(/^\/+/, ''));
+        if (oldPath.startsWith(localDir + path.sep) && fs.existsSync(oldPath)) {
+          fs.unlinkSync(oldPath);
+        }
       }
-      avatarUrl = `/uploads/avatars/${req.file.filename}`;
+      const filename = `avatar-${req.user!.userId}-${Date.now()}${detectedExt}`;
+      fs.writeFileSync(path.join(localDir, filename), req.file.buffer);
+      avatarUrl = `/uploads/avatars/${filename}`;
     }
 
     await User.findByIdAndUpdate(req.user!.userId, { avatar: avatarUrl });
 
     res.json({ success: true, data: { avatarUrl } });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    const message = process.env.NODE_ENV === 'production' ? 'Avatar upload failed' : error.message;
+    res.status(500).json({ success: false, message });
   }
 });
 

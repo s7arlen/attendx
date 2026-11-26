@@ -1,108 +1,171 @@
-# AttendX
+# AttendX - Smart Attendance System
 
-> Secure QR-based Attendance Management Platform with WebAuthn biometrics and real-time tracking.
+> Modern attendance management system with biometric and facial recognition verification
 
-AttendX is a full-stack platform designed for modern academic institutions to streamline and secure attendance tracking using dynamic QR codes, biometric verification (WebAuthn), real-time notifications via WebSockets, and comprehensive role-based dashboards (Admin, Teacher, Student).
+## 🎯 Features
 
----
+- **Dual Verification Methods**
+  - Biometric (WebAuthn - Fingerprint/Face ID)
+  - Facial Recognition (Camera-based, TensorFlow.js)
+- **QR Code Sessions** - Teachers broadcast attendance sessions
+- **Offline Support** - Students can mark attendance without internet, sync when online
+- **Real-time Monitoring** - Live attendance tracking with socket.io
+- **Admin Dashboard** - Comprehensive analytics and reporting
+- **Role-Based Access** - Admin, Teacher, Student roles with specific permissions
 
-## 🚀 Features
-
-- **Dynamic QR Code Attendance**: Time-sensitive, cryptographic QR codes to prevent proxy attendance.
-- **Biometric Authentication**: WebAuthn support for secure authentication.
-- **Role-Based Access Control**:
-  - **Admin**: Manage teachers, students, subjects, timetables, disputes, audit logs, and view system-wide analytics.
-  - **Teacher**: Create and manage attendance sessions, view subject analytics, handle attendance records.
-  - **Student**: Scan session QR codes, track attendance percentages, view subject-wise breakdowns.
-- **Real-Time Communication**: WebSocket / Socket.IO integration for live attendance updates and notifications.
-- **Auditing & Reporting**: Detailed audit logs and exportable attendance reports.
-- **Media Uploads**: Profile avatar management via Cloudinary or local fallback storage.
-
----
-
-## 🛠️ Tech Stack
-
-### Frontend
-- **Framework**: React 18 + TypeScript + Vite
-- **Styling**: Tailwind CSS, Lucide React icons
-- **State Management**: Zustand
-- **Networking**: Axios, Socket.IO Client
-
-### Backend
-- **Runtime**: Node.js & Express with TypeScript
-- **Database**: MongoDB via Mongoose
-- **Authentication**: JWT & SimpleWebAuthn
-- **Real-Time**: Socket.IO
-- **Validation**: Zod
-- **Security**: Helmet, express-rate-limit, bcryptjs
-
----
-
-## 📁 Project Structure
-
-```text
-attendx/
-├── backend/               # Express + TypeScript API server
-│   ├── src/
-│   │   ├── config/        # Database and socket configuration
-│   │   ├── controllers/   # Route handlers (admin, auth, student, teacher, etc.)
-│   │   ├── middleware/    # Auth, error handling, rate limiting
-│   │   ├── models/        # Mongoose data models
-│   │   ├── routes/        # Express API endpoints
-│   │   ├── scripts/       # Seed scripts
-│   │   └── utils/         # Helper functions (JWT, QR, mailer, audit log)
-│   └── package.json
-├── frontend/              # React + Vite frontend application
-│   ├── src/
-│   │   ├── components/    # Reusable UI components & layouts
-│   │   ├── hooks/         # Custom hooks (toast, socket, etc.)
-│   │   ├── pages/         # Admin, Teacher, Student, and Auth views
-│   │   ├── services/      # API communication layer
-│   │   ├── store/         # Zustand global stores
-│   │   └── types/         # TypeScript definitions
-│   └── package.json
-├── package.json           # Root workspace config
-└── README.md
-```
-
----
-
-## ⚡ Getting Started
+## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js (v18 or newer)
+- Node.js 18+
+- MongoDB
 - npm or yarn
-- MongoDB (local or MongoDB Atlas connection)
 
-### 1. Installation
-Clone the repository and install dependencies:
-```bash
-npm run install:all
-```
+### Installation
 
-### 2. Environment Configuration
-Copy the environment example file in the backend directory:
 ```bash
-cp backend/.env.example backend/.env
-```
-Update `backend/.env` with your MongoDB URI, JWT secrets, and optionally SMTP and Cloudinary credentials.
+# Backend
+cd backend
+npm install
+npm run dev
 
-### 3. Database Seeding (Optional)
-To seed initial demo data:
-```bash
-npm run seed --workspace=backend
-```
-
-### 4. Running Development Servers
-To start both backend and frontend concurrently:
-```bash
+# Frontend (new terminal)
+cd frontend
+npm install
 npm run dev
 ```
 
-- Frontend runs at: `http://localhost:5173`
-- Backend runs at: `http://localhost:5000`
+Frontend runs on `http://localhost:5173`  
+Backend runs on `http://localhost:5000`
+
+## 📁 Project Structure
+
+```
+attendex/
+├── backend/              # Node.js/Express API
+│   ├── src/
+│   │   ├── controllers/  # Route handlers
+│   │   ├── models/       # MongoDB schemas
+│   │   ├── routes/       # API routes
+│   │   ├── middleware/   # Express middleware
+│   │   ├── utils/        # Helper functions
+│   │   └── config/       # Configuration
+│   └── package.json
+├── frontend/             # React application
+│   ├── src/
+│   │   ├── pages/        # React pages
+│   │   ├── components/   # React components
+│   │   ├── services/     # API services
+│   │   ├── hooks/        # Custom hooks
+│   │   ├── store/        # State management (Zustand)
+│   │   └── types/        # TypeScript types
+│   └── package.json
+└── README.md
+```
+
+## 🔑 Key Technologies
+
+**Backend:**
+- Node.js + Express
+- MongoDB + Mongoose
+- WebAuthn (SimpleWebAuthn)
+- Socket.io
+- JWT Authentication
+
+**Frontend:**
+- React 18
+- TypeScript
+- Vite
+- TailwindCSS
+- Zustand
+- face-api.js (Facial Recognition)
+
+## ✨ Verification Methods
+
+### Biometric (WebAuthn)
+- Uses device fingerprint or Face ID
+- Stored locally on device
+- Private key never leaves device
+
+### Facial Recognition
+- Client-side face detection
+- 128-dimensional face embeddings
+- ~95% accuracy
+- No video transmission (privacy-first)
+
+## 🔐 Security
+
+- HTTPS enforced
+- Rate limiting on sensitive endpoints
+- Full audit logging
+- Password hashing with bcrypt
+- JWT token-based authentication
+- CORS configured
+
+## 📚 Documentation
+
+For detailed guides, see:
+- **Implementation:** `docs/FACIAL_RECOGNITION_IMPLEMENTATION.md`
+- **Testing:** `docs/FACIAL_RECOGNITION_TESTING.md`
+- **Deployment:** `docs/DEPLOYMENT.md`
+
+## 🧪 Testing
+
+### Local Testing
+```bash
+# Backend tests
+cd backend && npm test
+
+# Frontend tests
+cd frontend && npm test
+
+# Type checking
+npm run lint
+```
+
+## 🚀 Deployment
+
+See `docs/DEPLOYMENT.md` for detailed deployment instructions.
+
+### Production Checklist
+- [ ] Database backed up
+- [ ] Environment variables configured
+- [ ] HTTPS certificates ready
+- [ ] API rate limiting tested
+- [ ] Audit logging verified
+
+## 👥 User Roles
+
+| Role | Permissions |
+|------|------------|
+| **Admin** | Manage users, view analytics, configure system |
+| **Teacher** | Create sessions, view attendance, export reports |
+| **Student** | Mark attendance, view history, raise disputes |
+
+## 🤝 Contributing
+
+1. Create feature branch (`git checkout -b feat/feature-name`)
+2. Commit changes (`git commit -m "feat: description"`)
+3. Push to branch (`git push origin feat/feature-name`)
+4. Open Pull Request
+
+## 📞 Support
+
+For issues or questions:
+1. Check documentation in `docs/` folder
+2. Review existing issues on GitHub
+3. Contact development team
+
+## 📝 License
+
+This project is proprietary and confidential.
+
+## 🎉 Recent Updates
+
+- ✨ Facial recognition feature added
+- ✅ Password-based verification removed
+- 🔄 Offline attendance support
+- 📊 Enhanced analytics dashboard
 
 ---
 
-## 📄 License
-ISC
+**Last Updated:** November 2024

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate, authorize } from '../middleware/auth.middleware';
+import { publicLimiter } from '../middleware/rateLimiter';
 import {
   getVisitorDashboard,
   registerVisitor,
@@ -30,8 +31,8 @@ import {
 const router = Router();
 
 // ── PUBLIC routes (no auth) ───────────────────────────────────
-router.get('/public/hosts', publicGetHosts);
-router.post('/public/request', publicVisitorRequest);
+router.get('/public/hosts', publicLimiter, publicGetHosts);
+router.post('/public/request', publicLimiter, publicVisitorRequest);
 
 // All other visitor routes require authentication
 router.use(authenticate);

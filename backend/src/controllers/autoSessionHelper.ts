@@ -67,7 +67,6 @@ export const getAutoSessionsToday = async (req: AuthRequest, res: Response): Pro
         autoSessionWillStart: status === 'upcoming' && !session,
         session: session ? {
           id: session._id,
-          passwordCode: session.passwordCode,
           sessionCode: session.sessionCode,
           totalPresent: session.totalPresent,
           status: session.status,

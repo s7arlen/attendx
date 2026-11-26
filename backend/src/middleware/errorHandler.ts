@@ -41,13 +41,14 @@ export const errorHandler = (
     message = 'Invalid token';
   }
 
-  if (process.env.NODE_ENV === 'development') {
+  const isProduction = process.env.NODE_ENV === 'production';
+  if (!isProduction) {
     console.error('Error:', err);
   }
 
   res.status(statusCode).json({
     success: false,
-    message,
+    message: isProduction && statusCode >= 500 ? 'Internal server error' : message,
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
   });
 };

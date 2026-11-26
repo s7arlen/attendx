@@ -22,10 +22,6 @@ const METHOD_LABELS: Record<string, { label: string; icon: any }> = {
   manual:       { label: 'Manual Entry', icon: Hash },
 }
 
-const SESSION_TYPE_EMOJI: Record<string, string> = {
-  class: '🎓', seminar: '🎤', workshop: '🛠️', event: '🎉', lab: '🧪',
-}
-
 export default function AttendanceReceiptPage() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
@@ -62,7 +58,6 @@ export default function AttendanceReceiptPage() {
   const { record, subject, session: sess, student } = data
   const methodInfo = METHOD_LABELS[record.verificationMethod] || { label: record.verificationMethod, icon: Hash }
   const MethodIcon = methodInfo.icon
-  const typeEmoji = SESSION_TYPE_EMOJI[sess?.sessionType] || '📋'
 
   return (
     <div className="max-w-md mx-auto space-y-4 print:p-0 print:max-w-none">
@@ -128,7 +123,7 @@ export default function AttendanceReceiptPage() {
               <div>
                 <p className="text-xs text-muted-foreground">Session</p>
                 <p className="font-medium text-sm font-mono">
-                  {typeEmoji} {sess?.sessionCode}
+                  {sess?.sessionCode}
                   {sess?.sessionType && (
                     <span className="ml-2 text-xs text-muted-foreground capitalize font-sans">
                       ({sess.sessionType})

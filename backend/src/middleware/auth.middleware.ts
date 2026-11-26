@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { User } from '../models/User.model';
+import { getJwtSecret } from '../utils/security';
 
 export interface AuthRequest extends Request {
   user?: {
@@ -19,13 +20,15 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
     }
 
     const token = authHeader.substring(7);
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as {
+    const decoded = jwt.verify(token, getJwtSecret(), {
+      algorithms: ['HS256'],
+    }) as {
       userId: string;
       role: string;
       email: string;
     };
 
-    const user = await User.findById(decoded.userId).select('-passwordHash -refreshToken');
+    const user = await User.findById(decoded.userId).select('-passwordHash -refreshToken -passwordResetToken -passwordResetExpires');
     if (!user || !user.isActive) {
       res.status(401).json({ success: false, message: 'User not found or inactive' });
       return;

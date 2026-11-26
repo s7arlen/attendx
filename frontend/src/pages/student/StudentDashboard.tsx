@@ -40,7 +40,7 @@ export default function StudentDashboard() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Hi, {user?.name?.split(' ')[0]} 👋</h1>
+          <h1 className="text-2xl font-bold">Hi, {user?.name?.split(' ')[0]}</h1>
           <p className="text-muted-foreground text-sm mt-1">
             {user?.rollNumber && <span className="mr-2">Roll: {user.rollNumber}</span>}
             {user?.department && <span>{user.department}</span>}
@@ -48,31 +48,27 @@ export default function StudentDashboard() {
             {user?.section && <span> · {user.section}</span>}
           </p>
         </div>
-        <Badge variant="success" className="hidden sm:flex items-center gap-1.5 px-3 py-1.5">
-          <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-          Online
-        </Badge>
       </div>
 
       {/* Active sessions banner — shows when teacher has a live session for student's subjects */}
       {activeSessions && activeSessions.length > 0 && (
-        <div className="space-y-2">
-          <h3 className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" />
-            Live Sessions — Mark Attendance Now
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold text-rose-500 dark:text-rose-400 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full gradient-sunset status-live inline-block" />
+            Active Sessions
           </h3>
           {activeSessions.map((session: { _id: string; subjectId: { subjectName: string } | string; sessionCode: string }) => (
             <div key={session._id}
-              className="flex items-center justify-between p-3 rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-500/5">
+              className="flex items-center justify-between p-4 rounded-2xl border border-rose-500/25 bg-rose-500/[0.05] dark:bg-rose-500/[0.03] backdrop-blur-xl shadow-sm">
               <div>
-                <p className="font-semibold text-sm">
+                <p className="font-bold text-sm text-foreground">
                   {typeof session.subjectId === 'object' && session.subjectId !== null ? session.subjectId.subjectName : 'Session'}
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  Code: <span className="font-mono font-bold">{session.sessionCode}</span>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Session Code: <span className="font-mono font-bold text-foreground px-1.5 py-0.5 rounded bg-muted/60">{session.sessionCode}</span>
                 </p>
               </div>
-              <Button variant="gradient" size="sm" className="gap-1.5" onClick={() => navigate('/student/scan')}>
+              <Button variant="sunset" size="sm" className="gap-1.5 shadow-md shadow-rose-950/20" onClick={() => navigate('/student/scan')}>
                 <QrCode className="w-3.5 h-3.5" aria-hidden="true" />
                 Mark Attendance
               </Button>
@@ -109,15 +105,15 @@ export default function StudentDashboard() {
               <AreaChart data={analytics?.monthlyTrend || []}>
                 <defs>
                   <linearGradient id="studentGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10B981" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
+                    <stop offset="5%" stopColor="#F43F5E" stopOpacity={0.4} />
+                    <stop offset="95%" stopColor="#F97316" stopOpacity={0.02} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.6} />
                 <XAxis dataKey="month" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
                 <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
-                <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '12px' }} />
-                <Area type="monotone" dataKey="count" stroke="#10B981" strokeWidth={2} fill="url(#studentGrad)" />
+                <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '16px', backdropFilter: 'blur(16px)', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }} />
+                <Area type="monotone" dataKey="count" stroke="#F43F5E" strokeWidth={2.5} fill="url(#studentGrad)" />
               </AreaChart>
             </ResponsiveContainer>
           )}

@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import mongoose from 'mongoose';
+import { z } from 'zod';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { Assessment } from '../models/Assessment.model';
 import { AssessmentResult } from '../models/AssessmentResult.model';
@@ -9,16 +9,69 @@ import { AttendanceRecord } from '../models/AttendanceRecord.model';
 import { AttendanceSession } from '../models/AttendanceSession.model';
 import { RiskAssessment } from '../models/RiskAssessment.model';
 import { mlPredict } from '../utils/mlClient';
+import { isValidObjectId, sanitizeCsvCell } from '../utils/security';
+
+const createAssessmentSchema = z.object({
+  title: z.string().min(1).max(150),
+  type: z.enum(['internal_exam', 'unit_test', 'quiz', 'assignment']),
+  subjectId: z.string().refine(isValidObjectId, 'Invalid subject ID'),
+  maxMarks: z.coerce.number().positive().max(1000),
+  assessmentDate: z.string().min(1),
+  dueDate: z.string().optional(),
+  description: z.string().max(1000).optional(),
+});
+
+const updateAssessmentSchema = z.object({
+  title: z.string().min(1).max(150).optional(),
+  type: z.enum(['internal_exam', 'unit_test', 'quiz', 'assignment']).optional(),
+  maxMarks: z.coerce.number().positive().max(1000).optional(),
+  assessmentDate: z.string().optional(),
+  dueDate: z.string().optional(),
+  description: z.string().max(1000).optional(),
+});
+
+const createInterventionSchema = z.object({
+  studentId: z.string().refine(isValidObjectId, 'Invalid student ID'),
+  type: z.enum(['counselling', 'mentoring', 'remedial_class', 'subject_support', 'assignment_help', 'parent_meeting', 'other']),
+  description: z.string().min(1).max(1000),
+  scheduledDate: z.string().min(1),
+  followUpDate: z.string().optional(),
+  notes: z.string().max(1000).optional(),
+});
+
+const updateInterventionSchema = z.object({
+  type: z.enum(['counselling', 'mentoring', 'remedial_class', 'subject_support', 'assignment_help', 'parent_meeting', 'other']).optional(),
+  description: z.string().min(1).max(1000).optional(),
+  scheduledDate: z.string().optional(),
+  followUpDate: z.string().optional(),
+  notes: z.string().max(1000).optional(),
+  status: z.enum(['pending', 'scheduled', 'in_progress', 'completed', 'cancelled']).optional(),
+});
+
+async function ensureTeacherHasStudent(teacherId: string, studentId: string): Promise<boolean> {
+  const student = await User.findOne({ _id: studentId, role: 'student', isActive: true })
+    .select('department year section');
+  if (!student) return false;
+  const match = await Subject.findOne({
+    assignedTeacher: teacherId,
+    department: student.department,
+    year: student.year,
+    section: student.section,
+    isActive: true,
+  }).select('_id');
+  return !!match;
+}
 
 // ── ASSESSMENTS ──────────────────────────────────────────────
 
 export const createAssessment = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { title, type, subjectId, maxMarks, assessmentDate, dueDate, description } = req.body;
-    if (!title || !type || !subjectId || !maxMarks || !assessmentDate) {
-      res.status(400).json({ success: false, message: 'title, type, subjectId, maxMarks and assessmentDate are required' });
+    const parsed = createAssessmentSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, message: 'Validation error', errors: parsed.error.errors });
       return;
     }
+    const { title, type, subjectId, maxMarks, assessmentDate, dueDate, description } = parsed.data;
     const subject = await Subject.findById(subjectId);
     if (!subject) { res.status(404).json({ success: false, message: 'Subject not found' }); return; }
     if (req.user!.role === 'teacher' && subject.assignedTeacher.toString() !== req.user!.userId) {
@@ -33,40 +86,62 @@ export const createAssessment = async (req: AuthRequest, res: Response): Promise
       maxMarks, assessmentDate, dueDate, description,
     });
     res.status(201).json({ success: true, message: 'Assessment created', data: { assessment } });
-  } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
+  } catch { res.status(500).json({ success: false, message: 'Failed to create assessment' }); }
 };
 
 export const getAssessments = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { subjectId, type } = req.query;
     const query: any = { isActive: true };
-    if (subjectId) query.subjectId = subjectId;
-    if (type) query.type = type;
-    if (req.user!.role === 'teacher') query.teacherId = req.user!.userId;
+    if (subjectId) {
+      if (!isValidObjectId(String(subjectId))) {
+        res.status(400).json({ success: false, message: 'Invalid subject ID' }); return;
+      }
+      query.subjectId = String(subjectId);
+    }
+    if (type) query.type = String(type);
+
+    if (req.user!.role === 'teacher') {
+      query.teacherId = req.user!.userId;
+    } else if (req.user!.role === 'student') {
+      const student = await User.findById(req.user!.userId).select('department year section');
+      if (!student) { res.status(404).json({ success: false, message: 'Student not found' }); return; }
+      query.isPublished = true;
+      query.department = student.department;
+      query.year = student.year;
+      query.section = student.section;
+    }
+
     const assessments = await Assessment.find(query)
       .populate('subjectId', 'subjectName subjectCode')
       .populate('teacherId', 'name email')
       .sort({ assessmentDate: -1 });
     res.json({ success: true, data: { assessments } });
-  } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
+  } catch { res.status(500).json({ success: false, message: 'Failed to load assessments' }); }
 };
 
 export const updateAssessment = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+    if (!isValidObjectId(id)) { res.status(400).json({ success: false, message: 'Invalid ID' }); return; }
+    const parsed = updateAssessmentSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, errors: parsed.error.errors }); return;
+    }
     const assessment = await Assessment.findById(id);
     if (!assessment) { res.status(404).json({ success: false, message: 'Assessment not found' }); return; }
     if (req.user!.role === 'teacher' && assessment.teacherId.toString() !== req.user!.userId) {
       res.status(403).json({ success: false, message: 'Not authorized' }); return;
     }
-    const updated = await Assessment.findByIdAndUpdate(id, req.body, { new: true });
+    const updated = await Assessment.findByIdAndUpdate(id, { $set: parsed.data }, { new: true });
     res.json({ success: true, data: { assessment: updated } });
-  } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
+  } catch { res.status(500).json({ success: false, message: 'Failed to update assessment' }); }
 };
 
 export const publishAssessment = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+    if (!isValidObjectId(id)) { res.status(400).json({ success: false, message: 'Invalid ID' }); return; }
     const assessment = await Assessment.findById(id);
     if (!assessment) { res.status(404).json({ success: false, message: 'Assessment not found' }); return; }
     if (req.user!.role === 'teacher' && assessment.teacherId.toString() !== req.user!.userId) {
@@ -75,12 +150,13 @@ export const publishAssessment = async (req: AuthRequest, res: Response): Promis
     assessment.isPublished = true;
     await assessment.save();
     res.json({ success: true, message: 'Assessment published', data: { assessment } });
-  } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
+  } catch { res.status(500).json({ success: false, message: 'Failed to publish assessment' }); }
 };
 
 export const deleteAssessment = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+    if (!isValidObjectId(id)) { res.status(400).json({ success: false, message: 'Invalid ID' }); return; }
     const assessment = await Assessment.findById(id);
     if (!assessment) { res.status(404).json({ success: false, message: 'Assessment not found' }); return; }
     if (req.user!.role === 'teacher' && assessment.teacherId.toString() !== req.user!.userId) {
@@ -91,12 +167,13 @@ export const deleteAssessment = async (req: AuthRequest, res: Response): Promise
     }
     await Assessment.findByIdAndUpdate(id, { isActive: false });
     res.json({ success: true, message: 'Assessment deleted' });
-  } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
+  } catch { res.status(500).json({ success: false, message: 'Failed to delete assessment' }); }
 };
 
 export const getStudentsBySubject = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { subjectId } = req.params;
+    if (!isValidObjectId(subjectId)) { res.status(400).json({ success: false, message: 'Invalid subject ID' }); return; }
     const subject = await Subject.findById(subjectId);
     if (!subject) { res.status(404).json({ success: false, message: 'Subject not found' }); return; }
     if (req.user!.role === 'teacher' && subject.assignedTeacher.toString() !== req.user!.userId) {
@@ -110,12 +187,13 @@ export const getStudentsBySubject = async (req: AuthRequest, res: Response): Pro
       isActive: true,
     }).select('name email rollNumber year section').sort({ name: 1 });
     res.json({ success: true, data: { students } });
-  } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
+  } catch { res.status(500).json({ success: false, message: 'Failed to load students' }); }
 };
 
 export const exportAssessmentCSV = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { assessmentId } = req.params;
+    if (!isValidObjectId(assessmentId)) { res.status(400).json({ success: false, message: 'Invalid assessment ID' }); return; }
     const assessment = await Assessment.findById(assessmentId).populate('subjectId', 'subjectName subjectCode');
     if (!assessment) { res.status(404).json({ success: false, message: 'Assessment not found' }); return; }
     if (req.user!.role === 'teacher' && assessment.teacherId.toString() !== req.user!.userId) {
@@ -143,23 +221,22 @@ export const exportAssessmentCSV = async (req: AuthRequest, res: Response): Prom
       }),
     ];
 
-    const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
-    const filename = `${sub?.subjectCode || 'assessment'}_${assessment.title.replace(/\s+/g, '_')}.csv`;
+    const csv = rows.map(r => r.map(sanitizeCsvCell).join(',')).join('\n');
+    const safeSub = String(sub?.subjectCode || 'assessment').replace(/[^a-zA-Z0-9_-]/g, '');
+    const safeTitle = String(assessment.title || 'export').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filename = `${safeSub}_${safeTitle}.csv`;
 
-    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(csv);
-  } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
+  } catch { res.status(500).json({ success: false, message: 'Failed to export CSV' }); }
 };
-
-
 
 export const enterMarks = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { assessmentId, results } = req.body;
-    // results: [{ studentId, marksObtained, isAbsent, feedback }]
-    if (!assessmentId || !Array.isArray(results)) {
-      res.status(400).json({ success: false, message: 'assessmentId and results array required' }); return;
+    if (!isValidObjectId(assessmentId) || !Array.isArray(results) || results.length > 500) {
+      res.status(400).json({ success: false, message: 'Valid assessmentId and results array required' }); return;
     }
     const assessment = await Assessment.findById(assessmentId);
     if (!assessment) { res.status(404).json({ success: false, message: 'Assessment not found' }); return; }
@@ -172,9 +249,13 @@ export const enterMarks = async (req: AuthRequest, res: Response): Promise<void>
 
     for (const r of results) {
       const { studentId, marksObtained, isAbsent, submittedLate, feedback } = r;
-      // Validate marks
-      if (!isAbsent && (marksObtained < 0 || marksObtained > assessment.maxMarks)) {
-        errors.push({ studentId, error: `Marks must be 0–${assessment.maxMarks}` });
+      if (!isValidObjectId(studentId)) {
+        errors.push({ studentId, error: 'Invalid studentId' });
+        continue;
+      }
+      const numericMarks = Number(marksObtained);
+      if (!isAbsent && (!Number.isFinite(numericMarks) || numericMarks < 0 || numericMarks > assessment.maxMarks)) {
+        errors.push({ studentId, error: `Marks must be 0-${assessment.maxMarks}` });
         continue;
       }
       try {
@@ -184,41 +265,45 @@ export const enterMarks = async (req: AuthRequest, res: Response): Promise<void>
             assessmentId,
             studentId,
             subjectId: assessment.subjectId,
-            marksObtained: isAbsent ? 0 : marksObtained,
+            marksObtained: isAbsent ? 0 : numericMarks,
             isAbsent: !!isAbsent,
             submittedLate: !!submittedLate,
-            feedback,
+            feedback: typeof feedback === 'string' ? feedback.slice(0, 500) : undefined,
             gradedBy: req.user!.userId,
           },
           { upsert: true, new: true }
         );
         saved.push(result);
       } catch (e: any) {
-        errors.push({ studentId, error: e.message });
+        errors.push({ studentId, error: 'Save failed' });
       }
     }
 
-    // Trigger risk reassessment for affected students in background
     const studentIds = saved.map(r => r.studentId.toString());
     for (const sid of [...new Set(studentIds)]) {
-      triggerRiskAssessment(sid).catch(console.error);
+      triggerRiskAssessment(sid).catch(() => {});
     }
 
     res.json({ success: true, message: `${saved.length} records saved`, data: { saved: saved.length, errors } });
-  } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
+  } catch { res.status(500).json({ success: false, message: 'Failed to save marks' }); }
 };
 
 export const getAssessmentResults = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { assessmentId } = req.params;
+    if (!isValidObjectId(assessmentId)) { res.status(400).json({ success: false, message: 'Invalid assessment ID' }); return; }
     const assessment = await Assessment.findById(assessmentId).populate('subjectId', 'subjectName subjectCode');
     if (!assessment) { res.status(404).json({ success: false, message: 'Assessment not found' }); return; }
+
+    if (req.user!.role === 'teacher' && assessment.teacherId.toString() !== req.user!.userId) {
+      res.status(403).json({ success: false, message: 'Not authorized for this assessment' });
+      return;
+    }
 
     const results = await AssessmentResult.find({ assessmentId })
       .populate('studentId', 'name email rollNumber year section')
       .sort({ 'studentId.name': 1 });
 
-    // Class stats
     const marks = results.filter(r => !r.isAbsent).map(r => r.marksObtained);
     const avg = marks.length ? +(marks.reduce((a, b) => a + b, 0) / marks.length).toFixed(2) : 0;
     const highest = marks.length ? Math.max(...marks) : 0;
@@ -233,7 +318,7 @@ export const getAssessmentResults = async (req: AuthRequest, res: Response): Pro
         stats: { total: results.length, appeared: marks.length, average: avg, highest, lowest, passCount },
       },
     });
-  } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
+  } catch { res.status(500).json({ success: false, message: 'Failed to load assessment results' }); }
 };
 
 // ── STUDENT ACADEMIC PROFILE ──────────────────────────────────
@@ -241,16 +326,18 @@ export const getAssessmentResults = async (req: AuthRequest, res: Response): Pro
 export const getStudentAcademicProfile = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const targetId = req.params.studentId || req.user!.userId;
+    if (!isValidObjectId(targetId)) { res.status(400).json({ success: false, message: 'Invalid student ID' }); return; }
 
-    // Security: students can only view their own profile
     if (req.user!.role === 'student' && targetId !== req.user!.userId) {
       res.status(403).json({ success: false, message: 'Access denied' }); return;
     }
+    if (req.user!.role === 'teacher' && !(await ensureTeacherHasStudent(req.user!.userId, targetId))) {
+      res.status(403).json({ success: false, message: 'Not authorized for this student' }); return;
+    }
 
-    const student = await User.findById(targetId).select('-passwordHash -refreshToken');
+    const student = await User.findById(targetId).select('-passwordHash -refreshToken -passwordResetToken -passwordResetExpires');
     if (!student) { res.status(404).json({ success: false, message: 'Student not found' }); return; }
 
-    // Get subjects for this student
     const subjects = await Subject.find({
       department: student.department,
       year: student.year,
@@ -258,9 +345,6 @@ export const getStudentAcademicProfile = async (req: AuthRequest, res: Response)
       isActive: true,
     }).populate('assignedTeacher', 'name email');
 
-    const subjectIds = subjects.map(s => s._id);
-
-    // Attendance per subject
     const attendanceData = await Promise.all(subjects.map(async (sub) => {
       const totalSessions = await AttendanceSession.countDocuments({
         subjectId: sub._id,
@@ -280,7 +364,6 @@ export const getStudentAcademicProfile = async (req: AuthRequest, res: Response)
       };
     }));
 
-    // Assessment results grouped by subject and type
     const assessmentResults = await AssessmentResult.find({ studentId: targetId })
       .populate({
         path: 'assessmentId',
@@ -291,7 +374,6 @@ export const getStudentAcademicProfile = async (req: AuthRequest, res: Response)
 
     const validResults = assessmentResults.filter(r => r.assessmentId);
 
-    // Group by type
     const byType: Record<string, any[]> = {};
     for (const r of validResults) {
       const a = r.assessmentId as any;
@@ -309,7 +391,6 @@ export const getStudentAcademicProfile = async (req: AuthRequest, res: Response)
       });
     }
 
-    // Latest risk assessment
     const latestRisk = await RiskAssessment.findOne({ studentId: targetId }).sort({ createdAt: -1 });
 
     res.json({
@@ -325,7 +406,7 @@ export const getStudentAcademicProfile = async (req: AuthRequest, res: Response)
         riskAssessment: latestRisk,
       },
     });
-  } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
+  } catch { res.status(500).json({ success: false, message: 'Failed to load academic profile' }); }
 };
 
 // ── RISK ENGINE ────────────────────────────────────────────────
@@ -345,7 +426,6 @@ export async function triggerRiskAssessment(studentId: string): Promise<void> {
     const subjectIds = subjects.map(s => s._id);
     const warnings: string[] = [];
 
-    // 1. Attendance
     let totalSessions = 0, totalPresent = 0;
     for (const sub of subjects) {
       const sessions = await AttendanceSession.countDocuments({ subjectId: sub._id, status: { $in: ['ended', 'expired'] } });
@@ -356,7 +436,6 @@ export async function triggerRiskAssessment(studentId: string): Promise<void> {
     const attendancePct = totalSessions > 0 ? Math.round((totalPresent / totalSessions) * 100) : null;
     if (attendancePct === null) warnings.push('Insufficient attendance data');
 
-    // 2. Internal marks average
     const internalResults = await AssessmentResult.find({ studentId, isAbsent: false })
       .populate({ path: 'assessmentId', match: { type: { $in: ['internal_exam', 'unit_test'] }, isPublished: true } });
     const validInternal = internalResults.filter(r => r.assessmentId);
@@ -371,7 +450,6 @@ export async function triggerRiskAssessment(studentId: string): Promise<void> {
       warnings.push('No internal exam data');
     }
 
-    // 3. Quiz average
     const quizResults = await AssessmentResult.find({ studentId, isAbsent: false })
       .populate({ path: 'assessmentId', match: { type: 'quiz', isPublished: true } });
     const validQuiz = quizResults.filter(r => r.assessmentId);
@@ -386,7 +464,6 @@ export async function triggerRiskAssessment(studentId: string): Promise<void> {
       warnings.push('No quiz data');
     }
 
-    // 4. Assignment completion
     const assignmentAssessments = await Assessment.find({
       subjectId: { $in: subjectIds },
       type: 'assignment',
@@ -405,7 +482,6 @@ export async function triggerRiskAssessment(studentId: string): Promise<void> {
       warnings.push('No assignment data');
     }
 
-    // ── TRY ML MODEL FIRST ────────────────────────────────────
     const mlResult = await mlPredict({
       studentId,
       attendancePercentage: attendancePct ?? undefined,
@@ -422,7 +498,6 @@ export async function triggerRiskAssessment(studentId: string): Promise<void> {
     let assessmentMethod: 'RULE_BASED' | 'ML_MODEL';
 
     if (mlResult) {
-      // Use ML prediction
       riskLevel        = mlResult.riskLevel;
       riskScore        = mlResult.riskScore;
       factors          = mlResult.contributingFactors.map(f => ({ ...f, impact: f.impact as 'LOW' | 'MEDIUM' | 'HIGH' }));
@@ -431,7 +506,6 @@ export async function triggerRiskAssessment(studentId: string): Promise<void> {
       assessmentMethod = 'ML_MODEL';
       warnings.push(...mlResult.dataWarnings);
     } else {
-      // ── RULE-BASED FALLBACK ────────────────────────────────
       factors = [];
       let score = 0;
 
@@ -467,7 +541,6 @@ export async function triggerRiskAssessment(studentId: string): Promise<void> {
       if (riskLevel === 'LOW') recommendations.push('Keep up the good work and maintain your current performance');
     }
 
-    // Get previous risk
     const prev = await RiskAssessment.findOne({ studentId }).sort({ createdAt: -1 });
 
     await RiskAssessment.create({
@@ -485,8 +558,6 @@ export async function triggerRiskAssessment(studentId: string): Promise<void> {
       dataWarnings: warnings,
       previousRiskLevel: prev?.riskLevel,
     });
-
-    console.log(`[risk] Student ${studentId}: ${riskLevel} (score=${riskScore})`);
   } catch (err) {
     console.error('[risk] Error:', err);
   }
@@ -497,46 +568,52 @@ export async function triggerRiskAssessment(studentId: string): Promise<void> {
 export const getStudentRisk = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const targetId = req.params.studentId || req.user!.userId;
+    if (!isValidObjectId(targetId)) { res.status(400).json({ success: false, message: 'Invalid student ID' }); return; }
     if (req.user!.role === 'student' && targetId !== req.user!.userId) {
       res.status(403).json({ success: false, message: 'Access denied' }); return;
+    }
+    if (req.user!.role === 'teacher' && !(await ensureTeacherHasStudent(req.user!.userId, targetId))) {
+      res.status(403).json({ success: false, message: 'Not authorized for this student' }); return;
     }
     const latest = await RiskAssessment.findOne({ studentId: targetId }).sort({ createdAt: -1 });
     const history = await RiskAssessment.find({ studentId: targetId }).sort({ createdAt: -1 }).limit(10);
     res.json({ success: true, data: { latest, history } });
-  } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
+  } catch { res.status(500).json({ success: false, message: 'Failed to load risk data' }); }
 };
 
 export const triggerRiskForStudent = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { studentId } = req.params;
+    if (!isValidObjectId(studentId)) { res.status(400).json({ success: false, message: 'Invalid student ID' }); return; }
+    if (req.user!.role === 'teacher' && !(await ensureTeacherHasStudent(req.user!.userId, studentId))) {
+      res.status(403).json({ success: false, message: 'Not authorized for this student' }); return;
+    }
     await triggerRiskAssessment(studentId);
     const latest = await RiskAssessment.findOne({ studentId }).sort({ createdAt: -1 });
     res.json({ success: true, message: 'Risk assessment completed', data: { assessment: latest } });
-  } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
+  } catch { res.status(500).json({ success: false, message: 'Failed to trigger risk assessment' }); }
 };
 
 export const getRiskDashboard = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    // Get all students for this teacher's subjects
     let studentIds: string[] = [];
 
     if (req.user!.role === 'teacher') {
       const subjects = await Subject.find({ assignedTeacher: req.user!.userId, isActive: true });
-      const students = await User.find({
+      const cohortFilters = subjects.map(s => ({
         role: 'student',
-        department: { $in: subjects.map(s => s.department) },
-        year: { $in: subjects.map(s => s.year) },
-        section: { $in: subjects.map(s => s.section) },
+        department: s.department,
+        year: s.year,
+        section: s.section,
         isActive: true,
-      });
+      }));
+      const students = cohortFilters.length > 0 ? await User.find({ $or: cohortFilters }) : [];
       studentIds = students.map(s => s._id.toString());
     } else {
-      // Admin sees all
       const students = await User.find({ role: 'student', isActive: true });
       studentIds = students.map(s => s._id.toString());
     }
 
-    // Get latest risk for each student
     const riskData = await Promise.all(studentIds.map(async (sid) => {
       const student = await User.findById(sid).select('name email rollNumber department year section');
       const risk = await RiskAssessment.findOne({ studentId: sid }).sort({ createdAt: -1 });
@@ -548,7 +625,6 @@ export const getRiskDashboard = async (req: AuthRequest, res: Response): Promise
     const low = riskData.filter(r => r.risk?.riskLevel === 'LOW').length;
     const unassessed = riskData.filter(r => !r.risk).length;
 
-    // High risk students details
     const highRiskStudents = riskData
       .filter(r => r.risk?.riskLevel === 'HIGH')
       .map(r => ({
@@ -574,7 +650,7 @@ export const getRiskDashboard = async (req: AuthRequest, res: Response): Promise
         })),
       },
     });
-  } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
+  } catch { res.status(500).json({ success: false, message: 'Failed to load risk dashboard' }); }
 };
 
 // ── ML Service info ───────────────────────────────────────────
@@ -584,27 +660,29 @@ export const getMLInfo = async (req: AuthRequest, res: Response): Promise<void> 
     const healthy = await mlServiceHealthy();
     const info = healthy ? await mlModelInfo() : null;
     res.json({ success: true, data: { mlAvailable: healthy, modelInfo: info } });
-  } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
+  } catch { res.status(500).json({ success: false, message: 'Failed to load ML status' }); }
 };
 
 // ── What-If Simulator ─────────────────────────────────────────
 export const whatIfSimulate = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { studentId, attendancePercentage, internalMarksAverage, quizAverage, assignmentCompletion } = req.body;
+    if (!isValidObjectId(studentId)) {
+      res.status(400).json({ success: false, message: 'Invalid student ID' }); return;
+    }
 
-    // Security: students can only simulate for themselves
     if (req.user!.role === 'student' && studentId !== req.user!.userId) {
       res.status(403).json({ success: false, message: 'Access denied' }); return;
     }
+    if (req.user!.role === 'teacher' && !(await ensureTeacherHasStudent(req.user!.userId, studentId))) {
+      res.status(403).json({ success: false, message: 'Not authorized for this student' }); return;
+    }
 
-    // Get current actual risk
     const currentRisk = await RiskAssessment.findOne({ studentId }).sort({ createdAt: -1 });
 
-    // Run simulation (never saves to DB)
     const { mlPredict: mlP } = await import('../utils/mlClient');
     const simResult = await mlP({ studentId: 'simulation', attendancePercentage, internalMarksAverage, quizAverage, assignmentCompletion });
 
-    // Rule-based fallback for simulation
     let simRisk = simResult;
     if (!simResult) {
       let score = 0;
@@ -642,15 +720,19 @@ export const whatIfSimulate = async (req: AuthRequest, res: Response): Promise<v
         changed: currentRisk ? currentRisk.riskLevel !== simRisk?.riskLevel : false,
       },
     });
-  } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
+  } catch { res.status(500).json({ success: false, message: 'Simulation failed' }); }
 };
 
 export const createIntervention = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { Intervention } = await import('../models/Intervention.model');
-    const { studentId, type, description, scheduledDate, followUpDate, notes } = req.body;
-    if (!studentId || !type || !description || !scheduledDate) {
-      res.status(400).json({ success: false, message: 'studentId, type, description and scheduledDate required' }); return;
+    const parsed = createInterventionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, message: 'Validation error', errors: parsed.error.errors }); return;
+    }
+    const { studentId, type, description, scheduledDate, followUpDate, notes } = parsed.data;
+    if (req.user!.role === 'teacher' && !(await ensureTeacherHasStudent(req.user!.userId, studentId))) {
+      res.status(403).json({ success: false, message: 'Not authorized for this student' }); return;
     }
     const latestRisk = await RiskAssessment.findOne({ studentId }).sort({ createdAt: -1 });
     const intervention = await Intervention.create({
@@ -660,7 +742,7 @@ export const createIntervention = async (req: AuthRequest, res: Response): Promi
       riskLevelAtCreation: latestRisk?.riskLevel,
     });
     res.status(201).json({ success: true, message: 'Intervention created', data: { intervention } });
-  } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
+  } catch { res.status(500).json({ success: false, message: 'Failed to create intervention' }); }
 };
 
 export const getInterventions = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -668,29 +750,37 @@ export const getInterventions = async (req: AuthRequest, res: Response): Promise
     const { Intervention } = await import('../models/Intervention.model');
     const { studentId, status } = req.query;
     const query: any = {};
-    if (studentId) query.studentId = studentId;
-    if (status) query.status = status;
+    if (studentId) {
+      if (!isValidObjectId(String(studentId))) { res.status(400).json({ success: false, message: 'Invalid student ID' }); return; }
+      query.studentId = String(studentId);
+    }
+    if (status) query.status = String(status);
     if (req.user!.role === 'teacher') query.facultyId = req.user!.userId;
     const interventions = await Intervention.find(query)
       .populate('studentId', 'name email rollNumber department year section')
       .populate('facultyId', 'name email')
       .sort({ createdAt: -1 });
     res.json({ success: true, data: { interventions } });
-  } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
+  } catch { res.status(500).json({ success: false, message: 'Failed to load interventions' }); }
 };
 
 export const updateIntervention = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { Intervention } = await import('../models/Intervention.model');
     const { id } = req.params;
+    if (!isValidObjectId(id)) { res.status(400).json({ success: false, message: 'Invalid intervention ID' }); return; }
+    const parsed = updateInterventionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, errors: parsed.error.errors }); return;
+    }
     const intervention = await Intervention.findById(id);
     if (!intervention) { res.status(404).json({ success: false, message: 'Intervention not found' }); return; }
     if (req.user!.role === 'teacher' && intervention.facultyId.toString() !== req.user!.userId) {
       res.status(403).json({ success: false, message: 'Not authorized' }); return;
     }
-    const updated = await Intervention.findByIdAndUpdate(id, req.body, { new: true })
+    const updated = await Intervention.findByIdAndUpdate(id, { $set: parsed.data }, { new: true })
       .populate('studentId', 'name email rollNumber')
       .populate('facultyId', 'name email');
     res.json({ success: true, data: { intervention: updated } });
-  } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
+  } catch { res.status(500).json({ success: false, message: 'Failed to update intervention' }); }
 };

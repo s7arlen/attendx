@@ -84,7 +84,7 @@ export default function PrivacyPolicyPage() {
               <div className="w-9 h-9 gradient-bg rounded-xl flex items-center justify-center shadow-md shadow-primary/20 group-hover:scale-105 transition-transform">
                 <QrCode className="w-5 h-5 text-white" />
               </div>
-              <span className="font-bold text-lg tracking-tight gradient-text">AttendX</span>
+              <span className="font-bold text-lg tracking-tight text-foreground">AttendX</span>
             </Link>
           </div>
 
@@ -324,8 +324,18 @@ export default function PrivacyPolicyPage() {
             <li><strong>Right to Inspect:</strong> View your subject-wise attendance history and percentage analytics at any time.</li>
             <li><strong>Right to Dispute:</strong> Students can file formal attendance dispute tickets directly from the portal for review by faculty or administrators.</li>
             <li><strong>Right to Credential Revocation:</strong> You can unregister any registered WebAuthn biometric device at any time from your profile settings.</li>
+            <li><strong>Right to Account &amp; Data Deletion:</strong> Users may delete their account directly via self-service deletion (<code>DELETE /api/auth/account</code>) or request institutional purge through <code>privacy@attendx.edu</code>.</li>
             <li><strong>Right to Rectification:</strong> Request correction of inaccurate profile data through your department administrator.</li>
           </ul>
+
+          <div className="p-4 rounded-xl border border-border bg-card space-y-2">
+            <p className="text-sm font-semibold">Sub-processors &amp; External Services</p>
+            <ul className="text-xs sm:text-sm text-muted-foreground space-y-1.5 list-disc list-inside">
+              <li><strong>AttendX ML Risk Service:</strong> Processes anonymized academic attendance rates, internal scores, and assignment completion metrics strictly for risk scoring and early intervention alerts.</li>
+              <li><strong>Cloudinary Media CDN:</strong> Stores user-uploaded profile avatars securely over HTTPS when enabled.</li>
+              <li><strong>Transactional SMTP Provider:</strong> Delivers password reset codes, visitor QR passes, and low-attendance warnings.</li>
+            </ul>
+          </div>
 
           <div className="pt-4 p-4 rounded-xl border border-border bg-muted/30">
             <p className="text-xs text-muted-foreground">

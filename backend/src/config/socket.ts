@@ -1,5 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
+import { getJwtSecret, isValidObjectId } from '../utils/security';
+import { AttendanceSession } from '../models/AttendanceSession.model';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -10,23 +12,20 @@ export const setupSocketIO = (io: Server): void => {
   // Auth middleware for socket
   io.use((socket: AuthenticatedSocket, next) => {
     const token = socket.handshake.auth.token;
-    if (!token) {
+    if (!token || typeof token !== 'string') {
       return next(new Error('Authentication required'));
     }
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as any;
+      const decoded = jwt.verify(token, getJwtSecret(), { algorithms: ['HS256'] }) as any;
       socket.userId = decoded.userId;
       socket.userRole = decoded.role;
       next();
-    } catch (err) {
+    } catch {
       next(new Error('Invalid token'));
     }
   });
 
   io.on('connection', (socket: AuthenticatedSocket) => {
-    console.log(`[socket] Connected: ${socket.id} (User: ${socket.userId})`);
-
-    // Join role-based rooms
     if (socket.userRole) {
       socket.join(`role:${socket.userRole}`);
     }
@@ -34,26 +33,34 @@ export const setupSocketIO = (io: Server): void => {
       socket.join(`user:${socket.userId}`);
     }
 
-    // Teacher joins session room
-    socket.on('join:session', (sessionId: string) => {
-      socket.join(`session:${sessionId}`);
-      console.log(`[socket] User ${socket.userId} joined session ${sessionId}`);
+    // Teacher/admin joins session room (ownership verified)
+    socket.on('join:session', async (sessionId: string) => {
+      try {
+        if (!isValidObjectId(sessionId) || !['teacher', 'admin'].includes(socket.userRole || '')) return;
+        if (socket.userRole === 'teacher') {
+          const session = await AttendanceSession.findOne({
+            _id: sessionId,
+            $or: [{ teacherId: socket.userId }, { coHosts: socket.userId }],
+          }).select('_id');
+          if (!session) return;
+        }
+        socket.join(`session:${sessionId}`);
+      } catch { /* ignore invalid join */ }
     });
 
-    // Student joins session for live updates
+    // Student joins session watchers room
     socket.on('watch:session', (sessionId: string) => {
+      if (!isValidObjectId(sessionId)) return;
       socket.join(`session:${sessionId}:watchers`);
     });
 
-    // Security/admin joins the visitor gate room for live updates
+    // Security/admin joins the visitor gate room
     socket.on('join:visitor-gate', () => {
+      if (!['security', 'admin'].includes(socket.userRole || '')) return;
       socket.join('visitor:gate');
-      console.log(`[socket] User ${socket.userId} (${socket.userRole}) joined visitor gate room`);
     });
 
-    socket.on('disconnect', () => {
-      console.log(`[socket] Disconnected: ${socket.id}`);
-    });
+    socket.on('disconnect', () => {});
   });
 };
 

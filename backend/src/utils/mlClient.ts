@@ -6,6 +6,14 @@
 
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
 
+function mlHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (process.env.ML_API_KEY) {
+    headers['X-ML-API-Key'] = process.env.ML_API_KEY;
+  }
+  return headers;
+}
+
 interface MLPredictRequest {
   studentId: string;
   attendancePercentage?: number;
@@ -31,7 +39,7 @@ export async function mlPredict(payload: MLPredictRequest): Promise<MLPredictRes
   try {
     const res = await fetch(`${ML_SERVICE_URL}/predict`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: mlHeaders(),
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(10000), // 10s timeout
     });
@@ -53,7 +61,10 @@ export async function mlServiceHealthy(): Promise<boolean> {
 
 export async function mlModelInfo(): Promise<any> {
   try {
-    const res = await fetch(`${ML_SERVICE_URL}/model/info`, { signal: AbortSignal.timeout(5000) });
+    const res = await fetch(`${ML_SERVICE_URL}/model/info`, {
+      headers: mlHeaders(),
+      signal: AbortSignal.timeout(5000),
+    });
     return res.ok ? await res.json() : null;
   } catch {
     return null;

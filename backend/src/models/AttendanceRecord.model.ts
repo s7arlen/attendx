@@ -1,7 +1,7 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
 export type VerificationStatus = 'verified' | 'pending' | 'rejected';
-export type VerificationMethod = 'qr' | 'password' | 'biometric' | 'offline_sync' | 'manual';
+export type VerificationMethod = 'qr' | 'password' | 'biometric' | 'offline_sync' | 'manual' | 'facial_recognition';
 
 export interface IAttendanceRecord extends Document {
   _id: mongoose.Types.ObjectId;
@@ -31,7 +31,7 @@ const AttendanceRecordSchema = new Schema<IAttendanceRecord>(
     },
     verificationMethod: {
       type: String,
-      enum: ['qr', 'password', 'biometric', 'offline_sync', 'manual'],
+      enum: ['qr', 'password', 'biometric', 'offline_sync', 'manual', 'facial_recognition'],
       default: 'password',
     },
     isLate: { type: Boolean, default: false },

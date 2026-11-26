@@ -52,15 +52,26 @@ export default {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
+        sunset: {
+          rose: '#F43F5E',
+          coral: '#FB7185',
+          amber: '#F59E0B',
+          orange: '#F97316',
+          plum: '#0A0610',
+          velvet: '#130C1C',
+        },
         brand: {
-          primary: '#2563EB',
-          secondary: '#3B82F6',
+          primary: '#F43F5E',
+          secondary: '#F97316',
           success: '#10B981',
           warning: '#F59E0B',
           error: '#EF4444',
         },
       },
       borderRadius: {
+        '3xl': '1.5rem',
+        '2xl': '1.25rem',
+        xl: '1rem',
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
@@ -82,6 +93,10 @@ export default {
           '0%': { transform: 'translateX(-100%)' },
           '100%': { transform: 'translateX(0)' },
         },
+        'glow-pulse': {
+          '0%, 100%': { opacity: '0.6', transform: 'scale(1)' },
+          '50%': { opacity: '1', transform: 'scale(1.05)' },
+        },
         pulse: {
           '0%, 100%': { opacity: '1' },
           '50%': { opacity: '0.5' },
@@ -92,6 +107,7 @@ export default {
         'accordion-up': 'accordion-up 0.2s ease-out',
         'fade-in': 'fade-in 0.3s ease-out',
         'slide-in': 'slide-in 0.3s ease-out',
+        'glow-pulse': 'glow-pulse 4s ease-in-out infinite',
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],

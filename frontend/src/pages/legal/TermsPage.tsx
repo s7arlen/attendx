@@ -83,7 +83,7 @@ export default function TermsPage() {
               <div className="w-9 h-9 gradient-bg rounded-xl flex items-center justify-center shadow-md shadow-primary/20 group-hover:scale-105 transition-transform">
                 <QrCode className="w-5 h-5 text-white" />
               </div>
-              <span className="font-bold text-lg tracking-tight gradient-text">AttendX</span>
+              <span className="font-bold text-lg tracking-tight text-foreground">AttendX</span>
             </Link>
           </div>
 

@@ -1,5 +1,6 @@
 ﻿import { Response } from 'express';
 import mongoose from 'mongoose';
+import { z } from 'zod';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { AttendanceSession } from '../models/AttendanceSession.model';
 import { AttendanceRecord } from '../models/AttendanceRecord.model';
@@ -9,28 +10,57 @@ import { generateSessionAssets, generateFreshQR } from '../utils/qrGenerator';
 import { createAuditLog, getClientIp } from '../utils/auditLogger';
 import { emitToSession } from '../config/socket';
 import { Server } from 'socket.io';
+import { clampPagination, isValidObjectId, sanitizeCsvCell } from '../utils/security';
+
+const startSessionSchema = z.object({
+  subjectId: z.string().refine(isValidObjectId, 'Invalid subject ID'),
+  duration: z.coerce.number().int().min(1).max(300).default(15),
+  sessionType: z.enum(['class', 'seminar', 'workshop', 'event', 'lab']).default('class'),
+  capacity: z.coerce.number().int().min(1).max(5000).nullable().optional().default(null),
+  verificationMode: z.enum(['strict', 'open', 'invite']).default('strict'),
+  gracePeriodMinutes: z.coerce.number().int().min(0).max(60).default(0),
+  qrRefreshSeconds: z.coerce.number().int().min(10).max(300).optional(),
+  title: z.string().max(150).nullable().optional().default(null),
+  venue: z.string().max(150).nullable().optional().default(null),
+  inviteList: z.array(z.string().max(40)).max(500).optional().default([]),
+  coHosts: z.array(z.string().refine(isValidObjectId, 'Invalid co-host ID')).max(20).optional().default([]),
+});
+
+function buildSessionAccessFilter(sessionId: string, req: AuthRequest) {
+  if (req.user!.role === 'admin') {
+    return { _id: sessionId };
+  }
+  return {
+    _id: sessionId,
+    $or: [
+      { teacherId: req.user!.userId },
+      { coHosts: req.user!.userId },
+    ],
+  };
+}
 
 // ── TEACHER: START SESSION ────────────────────────────────────────────────────
 export const startSession = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const {
-      subjectId,
-      duration = 15,
-      sessionType = 'class',
-      capacity = null,
-      verificationMode = 'strict',
-      gracePeriodMinutes = 0,
-      qrRefreshSeconds,
-      title = null,
-      venue = null,
-      inviteList = [],
-      coHosts = [],
-    } = req.body;
-
-    if (!subjectId) {
-      res.status(400).json({ success: false, message: 'Subject ID required' });
+    const parsed = startSessionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, message: 'Invalid session parameters', errors: parsed.error.errors });
       return;
     }
+
+    const {
+      subjectId,
+      duration,
+      sessionType,
+      capacity,
+      verificationMode,
+      gracePeriodMinutes,
+      qrRefreshSeconds,
+      title,
+      venue,
+      inviteList,
+      coHosts,
+    } = parsed.data;
 
     const subject = await Subject.findById(subjectId);
     if (!subject) {
@@ -38,7 +68,7 @@ export const startSession = async (req: AuthRequest, res: Response): Promise<voi
       return;
     }
 
-    if (subject.assignedTeacher.toString() !== req.user!.userId) {
+    if (req.user!.role !== 'admin' && subject.assignedTeacher.toString() !== req.user!.userId) {
       res.status(403).json({ success: false, message: 'Not authorized for this subject' });
       return;
     }
@@ -56,13 +86,12 @@ export const startSession = async (req: AuthRequest, res: Response): Promise<voi
     const newId = new mongoose.Types.ObjectId();
     const sessionIdStr = newId.toString();
 
-    const { secureToken, passwordCode, sessionCode, qrCodeData } = await generateSessionAssets(
+    const { secureToken, sessionCode, qrCodeData } = await generateSessionAssets(
       sessionIdStr,
       subjectId,
       subject.subjectCode
     );
 
-    // Default QR refresh: 60s for large events/seminars, 20s for class/lab
     const defaultRefresh = ['seminar', 'event', 'workshop'].includes(sessionType) ? 60 : 20;
     const resolvedQrRefresh = qrRefreshSeconds ?? defaultRefresh;
 
@@ -76,20 +105,19 @@ export const startSession = async (req: AuthRequest, res: Response): Promise<voi
       sessionCode,
       qrToken: secureToken,
       qrCodeData,
-      passwordCode,
       startTime,
       expiryTime,
       status: 'active',
       duration,
       sessionType,
-      capacity: capacity ? Number(capacity) : null,
+      capacity: capacity ?? null,
       verificationMode,
-      gracePeriodMinutes: Number(gracePeriodMinutes),
+      gracePeriodMinutes,
       qrRefreshSeconds: resolvedQrRefresh,
       title: title || null,
       venue: venue || null,
-      inviteList: Array.isArray(inviteList) ? inviteList.map((r: string) => r.trim().toUpperCase()) : [],
-      coHosts: Array.isArray(coHosts) ? coHosts : [],
+      inviteList: inviteList.map((r) => r.trim().toUpperCase()),
+      coHosts,
     });
 
     const populated = await AttendanceSession.findById(session._id)
@@ -100,7 +128,6 @@ export const startSession = async (req: AuthRequest, res: Response): Promise<voi
       { subjectId, duration, sessionType, verificationMode }, getClientIp(req)
     );
 
-    // Notify students of their subjects that a session has started
     try {
       const { createNotification } = await import('../utils/notificationHelper');
       const students = await User.find({
@@ -114,8 +141,8 @@ export const startSession = async (req: AuthRequest, res: Response): Promise<voi
       await Promise.all(students.map(s =>
         createNotification(
           s._id.toString(),
-          '📋 Attendance Session Live',
-          `${subject.subjectName} attendance is now open. Code: ${passwordCode}`,
+          'Attendance Session Live',
+          `${subject.subjectName} attendance is now open. Session code: ${sessionCode}`,
           'info',
           '/student/scan'
         )
@@ -124,7 +151,7 @@ export const startSession = async (req: AuthRequest, res: Response): Promise<voi
 
     res.status(201).json({ success: true, message: 'Session started', data: { session: populated } });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Failed to start session' });
   }
 };
 
@@ -132,13 +159,13 @@ export const startSession = async (req: AuthRequest, res: Response): Promise<voi
 export const refreshQR = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { sessionId } = req.params;
+    if (!isValidObjectId(sessionId)) {
+      res.status(400).json({ success: false, message: 'Invalid session ID' });
+      return;
+    }
 
     const session = await AttendanceSession.findOne({
-      _id: sessionId,
-      $or: [
-        { teacherId: req.user!.userId },
-        { coHosts: req.user!.userId },
-      ],
+      ...buildSessionAccessFilter(sessionId, req),
       status: 'active',
     }).populate('subjectId', 'subjectName subjectCode department year section');
 
@@ -177,7 +204,7 @@ export const refreshQR = async (req: AuthRequest, res: Response): Promise<void> 
       data: { qrCodeData, qrToken: secureToken, refreshedAt: new Date().toISOString() },
     });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Failed to refresh QR' });
   }
 };
 
@@ -185,13 +212,13 @@ export const refreshQR = async (req: AuthRequest, res: Response): Promise<void> 
 export const endSession = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { sessionId } = req.params;
+    if (!isValidObjectId(sessionId)) {
+      res.status(400).json({ success: false, message: 'Invalid session ID' });
+      return;
+    }
 
     const session = await AttendanceSession.findOne({
-      _id: sessionId,
-      $or: [
-        { teacherId: req.user!.userId },
-        { coHosts: req.user!.userId },
-      ],
+      ...buildSessionAccessFilter(sessionId, req),
       status: 'active',
     });
 
@@ -220,7 +247,7 @@ export const endSession = async (req: AuthRequest, res: Response): Promise<void>
 
     res.json({ success: true, message: 'Session ended', data: { session } });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Failed to end session' });
   }
 };
 
@@ -228,14 +255,13 @@ export const endSession = async (req: AuthRequest, res: Response): Promise<void>
 export const getLiveSession = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { sessionId } = req.params;
+    if (!isValidObjectId(sessionId)) {
+      res.status(400).json({ success: false, message: 'Invalid session ID' });
+      return;
+    }
 
-    const session = await AttendanceSession.findOne({
-      _id: sessionId,
-      $or: [
-        { teacherId: req.user!.userId },
-        { coHosts: req.user!.userId },
-      ],
-    }).populate('subjectId', 'subjectName subjectCode department year section');
+    const session = await AttendanceSession.findOne(buildSessionAccessFilter(sessionId, req))
+      .populate('subjectId', 'subjectName subjectCode department year section');
 
     if (!session) {
       res.status(404).json({ success: false, message: 'Session not found' });
@@ -246,7 +272,6 @@ export const getLiveSession = async (req: AuthRequest, res: Response): Promise<v
       .populate('studentId', 'name email rollNumber year section')
       .sort({ timestamp: -1 });
 
-    // Build absent list when verificationMode = strict (can compare against enrolled students)
     let absentStudents: any[] = [];
     if (session.verificationMode === 'strict') {
       const subject = session.subjectId as any;
@@ -258,7 +283,7 @@ export const getLiveSession = async (req: AuthRequest, res: Response): Promise<v
         isActive: true,
       }).select('name rollNumber email year section');
 
-      const presentIds = new Set(attendanceRecords.map(r => r.studentId.toString()));
+      const presentIds = new Set(attendanceRecords.map(r => (r.studentId as any)?._id?.toString() ?? r.studentId.toString()));
       absentStudents = enrolled.filter(s => !presentIds.has(s._id.toString()));
     }
 
@@ -273,14 +298,18 @@ export const getLiveSession = async (req: AuthRequest, res: Response): Promise<v
       },
     });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Failed to load live session' });
   }
 };
 
-// ── PUBLIC: PROJECTOR VIEW (no auth — session code only) ──────────────────────
+// ── PUBLIC: PROJECTOR VIEW (no auth — safe fields only) ──────────────────────
 export const getProjectorSession = async (req: any, res: Response): Promise<void> => {
   try {
     const { sessionCode } = req.params;
+    if (!sessionCode || typeof sessionCode !== 'string' || sessionCode.length > 40) {
+      res.status(400).json({ success: false, message: 'Invalid session code' });
+      return;
+    }
 
     const session = await AttendanceSession.findOne({
       sessionCode: sessionCode.toUpperCase(),
@@ -291,12 +320,10 @@ export const getProjectorSession = async (req: any, res: Response): Promise<void
       return;
     }
 
-    // Only expose safe fields — no qrToken, no teacher details
     res.json({
       success: true,
       data: {
         sessionCode: session.sessionCode,
-        passwordCode: session.passwordCode,
         qrCodeData: session.qrCodeData,
         subjectName: (session.subjectId as any)?.subjectName ?? 'Session',
         subjectCode: (session.subjectId as any)?.subjectCode ?? '',
@@ -313,21 +340,22 @@ export const getProjectorSession = async (req: any, res: Response): Promise<void
       },
     });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Failed to load projector view' });
   }
 };
 
 // ── TEACHER: GET MY SESSIONS ──────────────────────────────────────────────────
 export const getTeacherSessions = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const sessions = await AttendanceSession.find({ teacherId: req.user!.userId })
+    const query = req.user!.role === 'admin' ? {} : { teacherId: req.user!.userId };
+    const sessions = await AttendanceSession.find(query)
       .populate('subjectId', 'subjectName subjectCode')
       .sort({ createdAt: -1 })
       .limit(50);
 
     res.json({ success: true, data: { sessions } });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Failed to load sessions' });
   }
 };
 
@@ -335,14 +363,13 @@ export const getTeacherSessions = async (req: AuthRequest, res: Response): Promi
 export const getSessionReport = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { sessionId } = req.params;
+    if (!isValidObjectId(sessionId)) {
+      res.status(400).json({ success: false, message: 'Invalid session ID' });
+      return;
+    }
 
-    const session = await AttendanceSession.findOne({
-      _id: sessionId,
-      $or: [
-        { teacherId: req.user!.userId },
-        { coHosts: req.user!.userId },
-      ],
-    }).populate('subjectId', 'subjectName subjectCode department year section');
+    const session = await AttendanceSession.findOne(buildSessionAccessFilter(sessionId, req))
+      .populate('subjectId', 'subjectName subjectCode department year section');
 
     if (!session) {
       res.status(404).json({ success: false, message: 'Session not found' });
@@ -353,7 +380,6 @@ export const getSessionReport = async (req: AuthRequest, res: Response): Promise
       .populate('studentId', 'name email rollNumber year section department')
       .sort({ timestamp: 1 });
 
-    // Build absent list for strict sessions
     let absentStudents: any[] = [];
     if (session.verificationMode === 'strict') {
       const subject = session.subjectId as any;
@@ -365,7 +391,7 @@ export const getSessionReport = async (req: AuthRequest, res: Response): Promise
         isActive: true,
       }).select('name rollNumber email year section department');
 
-      const presentIds = new Set(records.map(r => r.studentId.toString()));
+      const presentIds = new Set(records.map(r => (r.studentId as any)?._id?.toString() ?? r.studentId.toString()));
       absentStudents = enrolled.filter(s => !presentIds.has(s._id.toString()));
     }
 
@@ -380,7 +406,7 @@ export const getSessionReport = async (req: AuthRequest, res: Response): Promise
       },
     });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Failed to load session report' });
   }
 };
 
@@ -388,15 +414,14 @@ export const getSessionReport = async (req: AuthRequest, res: Response): Promise
 export const exportSessionCSV = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { sessionId } = req.params;
-    const { type = 'present' } = req.query; // 'present' | 'absent' | 'all'
+    if (!isValidObjectId(sessionId)) {
+      res.status(400).json({ success: false, message: 'Invalid session ID' });
+      return;
+    }
+    const type = ['present', 'absent', 'all'].includes(String(req.query.type)) ? String(req.query.type) : 'present';
 
-    const session = await AttendanceSession.findOne({
-      _id: sessionId,
-      $or: [
-        { teacherId: req.user!.userId },
-        { coHosts: req.user!.userId },
-      ],
-    }).populate('subjectId', 'subjectName subjectCode department year section');
+    const session = await AttendanceSession.findOne(buildSessionAccessFilter(sessionId, req))
+      .populate('subjectId', 'subjectName subjectCode department year section');
 
     if (!session) {
       res.status(404).json({ success: false, message: 'Session not found' });
@@ -409,19 +434,18 @@ export const exportSessionCSV = async (req: AuthRequest, res: Response): Promise
 
     const subjectInfo = session.subjectId as any;
     const rows: string[] = [];
-    const header = 'Name,Roll Number,Year,Section,Department,Status,Time,Method,Late';
-    rows.push(header);
+    rows.push('Name,Roll Number,Year,Section,Department,Status,Time,Method,Late');
 
     if (type !== 'absent') {
       records.forEach(r => {
         const s = r.studentId as any;
         rows.push([
-          s.name || '', s.rollNumber || '', s.year || '', s.section || '', s.department || '',
+          s?.name || '', s?.rollNumber || '', s?.year || '', s?.section || '', s?.department || '',
           'Present',
           new Date(r.timestamp).toLocaleTimeString(),
-          r.verificationMethod || 'password',
+          r.verificationMethod || 'biometric',
           r.isLate ? 'Yes' : 'No',
-        ].map(v => `"${v}"`).join(','));
+        ].map(sanitizeCsvCell).join(','));
       });
     }
 
@@ -434,205 +458,60 @@ export const exportSessionCSV = async (req: AuthRequest, res: Response): Promise
         isActive: true,
       }).select('name rollNumber email year section department');
 
-      const presentIds = new Set(records.map(r => r.studentId.toString()));
+      const presentIds = new Set(records.map(r => (r.studentId as any)?._id?.toString() ?? r.studentId.toString()));
       enrolled
         .filter(s => !presentIds.has(s._id.toString()))
         .forEach(s => {
           rows.push([
             s.name || '', s.rollNumber || '', s.year || '', s.section || '', s.department || '',
             'Absent', '', '', '',
-          ].map(v => `"${v}"`).join(','));
+          ].map(sanitizeCsvCell).join(','));
         });
     }
 
     const csv = rows.join('\n');
-    const filename = `${subjectInfo.subjectCode}-${session.sessionCode}-${type}.csv`;
+    const safeCode = String(subjectInfo.subjectCode || 'session').replace(/[^a-zA-Z0-9_-]/g, '');
+    const safeSessCode = String(session.sessionCode || 'export').replace(/[^a-zA-Z0-9_-]/g, '');
+    const filename = `${safeCode}-${safeSessCode}-${type}.csv`;
 
-    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(csv);
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// ── STUDENT: VERIFY ATTENDANCE ────────────────────────────────────────────────
-export const verifyAttendance = async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const { sessionId, subjectId, secureToken, passwordCode } = req.body;
-
-    if (!sessionId || !secureToken || !passwordCode) {
-      res.status(400).json({ success: false, message: 'Missing required fields' });
-      return;
-    }
-
-    const session = await AttendanceSession.findById(sessionId);
-    if (!session) {
-      res.status(404).json({ success: false, message: 'Session not found' });
-      return;
-    }
-
-    // Grace period: allow late entry for gracePeriodMinutes after expiry
-    const effectiveExpiry = new Date(
-      session.expiryTime.getTime() + (session.gracePeriodMinutes || 0) * 60 * 1000
-    );
-    const isLate = session.status !== 'active' && new Date() <= effectiveExpiry;
-
-    if (session.status !== 'active' && !isLate) {
-      res.status(400).json({ success: false, message: 'Session is no longer active' });
-      return;
-    }
-    if (new Date() > effectiveExpiry) {
-      if (session.status === 'active') { session.status = 'expired'; await session.save(); }
-      res.status(400).json({ success: false, message: 'Session has expired' });
-      return;
-    }
-
-    if (session.qrToken !== secureToken) {
-      res.status(400).json({ success: false, message: 'Invalid QR code — it may have refreshed. Scan again.' });
-      return;
-    }
-
-    if (session.passwordCode !== passwordCode.toUpperCase()) {
-      res.status(400).json({ success: false, message: 'Incorrect session password' });
-      return;
-    }
-
-    // Capacity check
-    if (session.capacity && session.totalPresent >= session.capacity) {
-      res.status(400).json({ success: false, message: `Session is at full capacity (${session.capacity})` });
-      return;
-    }
-
-    const existingRecord = await AttendanceRecord.findOne({
-      studentId: req.user!.userId,
-      sessionId,
-    });
-    if (existingRecord) {
-      res.status(409).json({ success: false, message: 'Attendance already marked for this session' });
-      return;
-    }
-
-    const subject = await Subject.findById(session.subjectId);
-    const student = await User.findById(req.user!.userId);
-
-    if (!subject || !student) {
-      res.status(404).json({ success: false, message: 'Subject or student not found' });
-      return;
-    }
-
-    // Verification mode checks
-    if (session.verificationMode === 'strict') {
-      if (
-        student.department !== subject.department ||
-        student.year !== subject.year ||
-        student.section !== subject.section
-      ) {
-        res.status(403).json({
-          success: false,
-          message: 'You are not enrolled in this class section',
-        });
-        return;
-      }
-    } else if (session.verificationMode === 'invite') {
-      const roll = student.rollNumber?.toUpperCase() || '';
-      if (!session.inviteList.includes(roll)) {
-        res.status(403).json({
-          success: false,
-          message: 'You are not on the invite list for this session',
-        });
-        return;
-      }
-    }
-    // 'open' mode — no enrollment check
-
-    // Atomically increment totalPresent
-    await AttendanceSession.findByIdAndUpdate(sessionId, { $inc: { totalPresent: 1 } });
-
-    const record = await AttendanceRecord.create({
-      studentId: req.user!.userId,
-      sessionId: session._id,
-      subjectId: session.subjectId,
-      timestamp: new Date(),
-      verificationStatus: 'verified',
-      verificationMethod: 'password',
-      isLate,
-      ipAddress: getClientIp(req),
-    });
-
-    const io: Server = req.app.get('io');
-    const updatedSession = await AttendanceSession.findById(sessionId).select('totalPresent');
-    emitToSession(io, sessionId.toString(), 'attendance:marked', {
-      studentId: student._id,
-      studentName: student.name,
-      rollNumber: student.rollNumber,
-      year: student.year,
-      section: student.section,
-      isLate,
-      timestamp: record.timestamp,
-      totalPresent: updatedSession?.totalPresent ?? session.totalPresent + 1,
-    });
-
-    await createAuditLog(
-      req.user!.userId, 'MARK_ATTENDANCE', 'AttendanceRecord', record._id.toString(),
-      { sessionId, isLate }, getClientIp(req)
-    );
-
-    // Background: risk reassessment
-    import('../controllers/academic.controller')
-      .then(m => m.triggerRiskAssessment(req.user!.userId))
-      .catch(() => {});
-
-    const { Notification } = await import('../models/Notification.model');
-    await Notification.create({
-      userId: req.user!.userId,
-      title: 'Attendance Marked',
-      message: `Your attendance for ${subject.subjectName} has been recorded${isLate ? ' (late entry)' : ''}.`,
-      type: 'success',
-      link: '/student/attendance',
-    });
-
-    res.json({
-      success: true,
-      message: `Attendance marked${isLate ? ' (late entry accepted)' : ''} successfully`,
-      data: {
-        record,
-        isLate,
-        subject: { subjectName: subject.subjectName, subjectCode: subject.subjectCode },
-        timestamp: record.timestamp,
-        sessionType: session.sessionType,
-        venue: session.venue,
-      },
-    });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Failed to export CSV' });
   }
 };
 
 // ── STUDENT: ATTENDANCE HISTORY ───────────────────────────────────────────────
 export const getAttendanceHistory = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { subjectId, page = 1, limit = 20 } = req.query;
+    const { subjectId } = req.query;
+    const { page, limit, skip } = clampPagination(req.query.page, req.query.limit, 20, 100);
     const query: any = { studentId: req.user!.userId };
-    if (subjectId) query.subjectId = subjectId;
+    if (subjectId) {
+      if (!isValidObjectId(String(subjectId))) {
+        res.status(400).json({ success: false, message: 'Invalid subject ID' });
+        return;
+      }
+      query.subjectId = String(subjectId);
+    }
 
-    const skip = (Number(page) - 1) * Number(limit);
     const [records, total] = await Promise.all([
       AttendanceRecord.find(query)
         .populate('subjectId', 'subjectName subjectCode department')
         .populate({
           path: 'sessionId',
-          select: 'startTime expiryTime passwordCode status duration sessionType venue',
+          select: 'startTime expiryTime status duration sessionType venue',
         })
         .sort({ timestamp: -1 })
         .skip(skip)
-        .limit(Number(limit)),
+        .limit(limit),
       AttendanceRecord.countDocuments(query),
     ]);
 
-    res.json({ success: true, data: { records, total, page: Number(page), limit: Number(limit) } });
+    res.json({ success: true, data: { records, total, page, limit } });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Failed to load attendance history' });
   }
 };
 
@@ -661,7 +540,7 @@ export const getAttendanceSummary = async (req: AuthRequest, res: Response): Pro
       data: { totalPresent: records.length, summaryBySubject },
     });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Failed to load summary' });
   }
 };
 
@@ -669,6 +548,10 @@ export const getAttendanceSummary = async (req: AuthRequest, res: Response): Pro
 export const findSessionByCode = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { sessionCode } = req.params;
+    if (!sessionCode || sessionCode.length > 40) {
+      res.status(400).json({ success: false, message: 'Invalid session code' });
+      return;
+    }
 
     const session = await AttendanceSession.findOne({
       sessionCode: sessionCode.toUpperCase(),
@@ -688,6 +571,32 @@ export const findSessionByCode = async (req: AuthRequest, res: Response): Promis
       await session.save();
       res.status(400).json({ success: false, message: 'Session has expired' });
       return;
+    }
+
+    // Verify student eligibility before revealing session details/token
+    if (req.user!.role === 'student') {
+      const student = await User.findById(req.user!.userId).select('department year section rollNumber');
+      const subject = session.subjectId as any;
+      if (!student || !subject) {
+        res.status(403).json({ success: false, message: 'Access denied' });
+        return;
+      }
+      if (session.verificationMode === 'strict') {
+        if (
+          student.department !== subject.department ||
+          student.year !== subject.year ||
+          student.section !== subject.section
+        ) {
+          res.status(403).json({ success: false, message: 'You are not enrolled in this class section' });
+          return;
+        }
+      } else if (session.verificationMode === 'invite') {
+        const roll = student.rollNumber?.toUpperCase() || '';
+        if (!session.inviteList.includes(roll)) {
+          res.status(403).json({ success: false, message: 'You are not on the invite list for this session' });
+          return;
+        }
+      }
     }
 
     const alreadyMarked = await AttendanceRecord.findOne({
@@ -714,7 +623,7 @@ export const findSessionByCode = async (req: AuthRequest, res: Response): Promis
       },
     });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Failed to look up session' });
   }
 };
 
@@ -722,6 +631,10 @@ export const findSessionByCode = async (req: AuthRequest, res: Response): Promis
 export const validateQR = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { sessionId, secureToken } = req.body;
+    if (!isValidObjectId(sessionId) || !secureToken || typeof secureToken !== 'string') {
+      res.status(400).json({ success: false, message: 'Invalid QR payload' });
+      return;
+    }
 
     const session = await AttendanceSession.findById(sessionId)
       .populate('subjectId', 'subjectName subjectCode department year section');
@@ -761,7 +674,7 @@ export const validateQR = async (req: AuthRequest, res: Response): Promise<void>
       },
     });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Failed to validate QR' });
   }
 };
 
@@ -769,7 +682,11 @@ export const validateQR = async (req: AuthRequest, res: Response): Promise<void>
 export const raiseDispute = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { recordId } = req.params;
-    const { reason } = req.body;
+    if (!isValidObjectId(recordId)) {
+      res.status(400).json({ success: false, message: 'Invalid record ID' });
+      return;
+    }
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim().slice(0, 500) : '';
 
     const record = await AttendanceRecord.findOne({ _id: recordId, studentId: req.user!.userId });
     if (!record) {
@@ -800,7 +717,7 @@ export const raiseDispute = async (req: AuthRequest, res: Response): Promise<voi
 
     res.json({ success: true, message: 'Dispute raised. Admin will review it shortly.' });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Failed to raise dispute' });
   }
 };
 
@@ -819,17 +736,19 @@ export const getActiveSessionsForStudent = async (req: AuthRequest, res: Respons
 
     const subjectIds = subjects.map(s => s._id);
 
-    // Also include open sessions that are active
+    // Never expose qrToken or qrCodeData in active session list
     const sessions = await AttendanceSession.find({
       $or: [
         { subjectId: { $in: subjectIds }, status: 'active' },
         { verificationMode: 'open', status: 'active' },
       ],
-    }).populate('subjectId', 'subjectName subjectCode department year section');
+    })
+      .select('-qrToken -qrCodeData')
+      .populate('subjectId', 'subjectName subjectCode department year section');
 
     res.json({ success: true, data: { sessions } });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Failed to load active sessions' });
   }
 };
 
@@ -837,6 +756,10 @@ export const getActiveSessionsForStudent = async (req: AuthRequest, res: Respons
 export const getAttendanceReceipt = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { sessionId } = req.params;
+    if (!isValidObjectId(sessionId)) {
+      res.status(400).json({ success: false, message: 'Invalid session ID' });
+      return;
+    }
 
     const record = await AttendanceRecord.findOne({
       studentId: req.user!.userId,
@@ -849,7 +772,7 @@ export const getAttendanceReceipt = async (req: AuthRequest, res: Response): Pro
     }
 
     const session = await AttendanceSession.findById(sessionId)
-      .select('sessionCode passwordCode sessionType venue title startTime expiryTime status');
+      .select('sessionCode sessionType venue title startTime expiryTime status');
 
     const student = await User.findById(req.user!.userId)
       .select('name rollNumber department year section');
@@ -881,7 +804,7 @@ export const getAttendanceReceipt = async (req: AuthRequest, res: Response): Pro
       },
     });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Failed to load receipt' });
   }
 };
 
@@ -889,57 +812,87 @@ export const getAttendanceReceipt = async (req: AuthRequest, res: Response): Pro
 export const syncOfflineAttendance = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { records } = req.body;
-    if (!Array.isArray(records) || records.length === 0) {
-      res.status(400).json({ success: false, message: 'records array required' });
+    if (!Array.isArray(records) || records.length === 0 || records.length > 50) {
+      res.status(400).json({ success: false, message: 'records array (1-50 items) required' });
+      return;
+    }
+
+    const student = await User.findById(req.user!.userId).select('department year section rollNumber');
+    if (!student) {
+      res.status(404).json({ success: false, message: 'Student not found' });
       return;
     }
 
     const results: { sessionId: string; status: string; message: string }[] = [];
 
     for (const record of records) {
+      const rawSessionId = String(record?.sessionId || '');
       try {
-        const { sessionId, subjectId, secureToken, passwordCode, timestamp } = record;
+        if (!isValidObjectId(rawSessionId)) {
+          results.push({ sessionId: rawSessionId, status: 'failed', message: 'Invalid session ID' });
+          continue;
+        }
 
-        const session = await AttendanceSession.findById(sessionId)
+        const session = await AttendanceSession.findById(rawSessionId)
           .populate('subjectId', 'subjectName subjectCode department year section');
 
         if (!session) {
-          results.push({ sessionId, status: 'failed', message: 'Session not found' });
+          results.push({ sessionId: rawSessionId, status: 'failed', message: 'Session not found' });
+          continue;
+        }
+
+        const subject = session.subjectId as any;
+        if (session.verificationMode === 'strict') {
+          if (
+            !subject ||
+            student.department !== subject.department ||
+            student.year !== subject.year ||
+            student.section !== subject.section
+          ) {
+            results.push({ sessionId: rawSessionId, status: 'failed', message: 'Not enrolled in this class section' });
+            continue;
+          }
+        } else if (session.verificationMode === 'invite') {
+          const roll = student.rollNumber?.toUpperCase() || '';
+          if (!session.inviteList.includes(roll)) {
+            results.push({ sessionId: rawSessionId, status: 'failed', message: 'Not on the invite list' });
+            continue;
+          }
+        }
+
+        if (session.capacity && session.totalPresent >= session.capacity) {
+          results.push({ sessionId: rawSessionId, status: 'failed', message: 'Session is at full capacity' });
           continue;
         }
 
         const sessionAge = Date.now() - new Date(session.startTime).getTime();
         if (sessionAge > 24 * 60 * 60 * 1000) {
-          results.push({ sessionId, status: 'failed', message: 'Session too old (>24h) to sync' });
+          results.push({ sessionId: rawSessionId, status: 'failed', message: 'Session too old (>24h) to sync' });
           continue;
         }
 
-        const existing = await AttendanceRecord.findOne({ sessionId, studentId: req.user!.userId });
+        const existing = await AttendanceRecord.findOne({ sessionId: rawSessionId, studentId: req.user!.userId });
         if (existing) {
-          results.push({ sessionId, status: 'duplicate', message: 'Already marked' });
-          continue;
-        }
-
-        if (session.passwordCode !== passwordCode?.toUpperCase()) {
-          results.push({ sessionId, status: 'failed', message: 'Invalid password code' });
+          results.push({ sessionId: rawSessionId, status: 'duplicate', message: 'Already marked' });
           continue;
         }
 
         await AttendanceRecord.create({
           studentId: req.user!.userId,
-          sessionId,
-          subjectId: session.subjectId,
-          timestamp: timestamp ? new Date(timestamp) : new Date(),
-          verificationStatus: 'verified',
+          sessionId: session._id,
+          subjectId: subject?._id ?? session.subjectId,
+          timestamp: record.timestamp ? new Date(record.timestamp) : new Date(),
+          verificationStatus: 'pending', // Offline sync records require teacher/admin verification if disputed or unverified by biometric
           verificationMethod: 'offline_sync',
           isLate: false,
+          ipAddress: getClientIp(req),
         });
 
-        await AttendanceSession.findByIdAndUpdate(sessionId, { $inc: { totalPresent: 1 } });
+        await AttendanceSession.findByIdAndUpdate(rawSessionId, { $inc: { totalPresent: 1 } });
 
-        results.push({ sessionId, status: 'synced', message: 'Attendance synced successfully' });
-      } catch (err: any) {
-        results.push({ sessionId: record.sessionId, status: 'failed', message: err.message });
+        results.push({ sessionId: rawSessionId, status: 'synced', message: 'Attendance synced successfully' });
+      } catch {
+        results.push({ sessionId: rawSessionId, status: 'failed', message: 'Sync error' });
       }
     }
 
@@ -951,7 +904,7 @@ export const syncOfflineAttendance = async (req: AuthRequest, res: Response): Pr
       message: `${synced} synced, ${failed} failed`,
       data: { results, synced, failed },
     });
-  } catch (err: any) {
-    res.status(500).json({ success: false, message: err.message });
+  } catch {
+    res.status(500).json({ success: false, message: 'Offline sync failed' });
   }
 };

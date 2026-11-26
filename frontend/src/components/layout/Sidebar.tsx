@@ -4,10 +4,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, Users, BookOpen, Calendar, BarChart3, QrCode,
   History, ScanLine, ChevronLeft, ChevronRight, GraduationCap,
-  ShieldCheck, LogOut, UserCheck, Clock, UserCircle,
-  Shield, AlertTriangle, Building2, CalendarDays,
-  UserPlus, ClipboardCheck, QrCode as QrCodeIcon, LogIn, BarChart2,
-  ChevronDown, Brain, Zap, WifiOff,
+  LogOut, UserCheck, UserCircle, Shield, AlertTriangle, Building2,
+  CalendarDays, UserPlus, ClipboardCheck, QrCode as QrCodeIcon,
+  BarChart2, ChevronDown, Brain, Zap, WifiOff,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/authStore'
@@ -21,17 +20,17 @@ interface NavItem {
 }
 
 const adminNavItems: NavItem[] = [
-  { label: 'Dashboard',      icon: LayoutDashboard, path: '/len-admin' },
-  { label: 'Teachers',       icon: Users,            path: '/len-admin/teachers' },
-  { label: 'Students',       icon: GraduationCap,    path: '/len-admin/students' },
-  { label: 'Subjects',       icon: BookOpen,         path: '/len-admin/subjects' },
-  { label: 'Timetable',      icon: Calendar,         path: '/len-admin/timetable' },
-  { label: 'AI Risk Analytics', icon: Brain,         path: '/len-admin/risk-analytics' },
-  { label: 'Analytics',      icon: BarChart3,        path: '/len-admin/analytics' },
-  { label: 'Reports',        icon: History,          path: '/len-admin/reports' },
-  { label: 'Disputes',       icon: AlertTriangle,    path: '/len-admin/disputes' },
-  { label: 'Audit Logs',     icon: Shield,           path: '/len-admin/audit-logs' },
-  { label: 'Profile',        icon: UserCircle,       path: '/len-admin/profile' },
+  { label: 'Dashboard',         icon: LayoutDashboard, path: '/len-admin' },
+  { label: 'Teachers',          icon: Users,           path: '/len-admin/teachers' },
+  { label: 'Students',          icon: GraduationCap,   path: '/len-admin/students' },
+  { label: 'Subjects',          icon: BookOpen,        path: '/len-admin/subjects' },
+  { label: 'Timetable',         icon: Calendar,        path: '/len-admin/timetable' },
+  { label: 'Risk Analytics',    icon: Brain,           path: '/len-admin/risk-analytics' },
+  { label: 'Analytics',         icon: BarChart3,       path: '/len-admin/analytics' },
+  { label: 'Reports',           icon: History,         path: '/len-admin/reports' },
+  { label: 'Disputes',          icon: AlertTriangle,   path: '/len-admin/disputes' },
+  { label: 'Audit Logs',        icon: Shield,          path: '/len-admin/audit-logs' },
+  { label: 'Profile',           icon: UserCircle,      path: '/len-admin/profile' },
 ]
 
 const visitorSubItems: NavItem[] = [
@@ -48,20 +47,21 @@ const visitorSubItems: NavItem[] = [
 ]
 
 const teacherNavItems: NavItem[] = [
-  { label: 'Dashboard',         icon: LayoutDashboard, path: '/teacher' },
-  { label: 'My Subjects',       icon: BookOpen,        path: '/teacher/subjects' },
-  { label: 'Smart Timetable',   icon: Zap,             path: '/teacher/smart-timetable' },
-  { label: 'Assessments',       icon: ClipboardCheck,  path: '/teacher/assessments' },
-  { label: 'Early Warning',     icon: AlertTriangle,   path: '/teacher/risk' },
-  { label: 'Interventions',     icon: Users,           path: '/teacher/interventions' },
-  { label: 'What-If Sim',       icon: BarChart3,       path: '/teacher/whatif' },
-  { label: 'Sessions',          icon: QrCode,          path: '/teacher/sessions' },
-  { label: 'Analytics',         icon: BarChart2,       path: '/teacher/analytics' },
-  { label: 'VISITOR MANAGEMENT', isHeader: true },
-  { label: 'My Requests',       icon: ClipboardCheck,  path: '/visitor/my-requests', group: 'visitor' },
-  { label: 'Events',            icon: CalendarDays,    path: '/visitor/events',      group: 'visitor' },
-  { label: 'Profile',           icon: UserCircle,      path: '/teacher/profile' },
+  { label: 'Dashboard',          icon: LayoutDashboard, path: '/teacher' },
+  { label: 'My Subjects',        icon: BookOpen,        path: '/teacher/subjects' },
+  { label: 'Auto Schedule',      icon: Zap,             path: '/teacher/smart-timetable' },
+  { label: 'Assessments',        icon: ClipboardCheck,  path: '/teacher/assessments' },
+  { label: 'Early Warning',      icon: AlertTriangle,   path: '/teacher/risk' },
+  { label: 'Interventions',      icon: Users,           path: '/teacher/interventions' },
+  { label: 'What-If Sim',        icon: BarChart3,       path: '/teacher/whatif' },
+  { label: 'Sessions',           icon: QrCode,          path: '/teacher/sessions' },
+  { label: 'Analytics',          icon: BarChart2,       path: '/teacher/analytics' },
+  { label: 'Visitor Management', isHeader: true },
+  { label: 'My Requests',        icon: ClipboardCheck,  path: '/visitor/my-requests', group: 'visitor' },
+  { label: 'Events',             icon: CalendarDays,    path: '/visitor/events',      group: 'visitor' },
+  { label: 'Profile',            icon: UserCircle,      path: '/teacher/profile' },
 ]
+
 const securityNavItems: NavItem[] = [
   { label: 'Gate Scanner',       icon: ScanLine,       path: '/visitor/gate' },
   { label: 'Register Visitor',   icon: UserPlus,       path: '/visitor/register' },
@@ -73,14 +73,14 @@ const securityNavItems: NavItem[] = [
 ]
 
 const studentNavItems: NavItem[] = [
-  { label: 'Dashboard',         icon: LayoutDashboard, path: '/student' },
-  { label: 'Scan QR',           icon: ScanLine,        path: '/student/scan' },
-  { label: 'Offline Attendance',icon: WifiOff,         path: '/student/offline' },
-  { label: 'My Subjects',       icon: BookOpen,        path: '/student/subjects' },
-  { label: 'Attendance',        icon: UserCheck,       path: '/student/attendance' },
-  { label: 'Academic Profile',  icon: GraduationCap,   path: '/student/academic' },
-  { label: 'Analytics',         icon: BarChart3,       path: '/student/analytics' },
-  { label: 'Profile',           icon: UserCircle,      path: '/student/profile' },
+  { label: 'Dashboard',          icon: LayoutDashboard, path: '/student' },
+  { label: 'Scan QR',            icon: ScanLine,        path: '/student/scan' },
+  { label: 'Offline Attendance', icon: WifiOff,         path: '/student/offline' },
+  { label: 'My Subjects',        icon: BookOpen,        path: '/student/subjects' },
+  { label: 'Attendance',         icon: UserCheck,       path: '/student/attendance' },
+  { label: 'Academic Profile',   icon: GraduationCap,   path: '/student/academic' },
+  { label: 'Analytics',          icon: BarChart3,       path: '/student/analytics' },
+  { label: 'Profile',            icon: UserCircle,      path: '/student/profile' },
 ]
 
 // Root paths — dashboard item should only be active on exact match
@@ -104,19 +104,18 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
     studentNavItems
 
   return (
-    // Wrapper — overflow-visible so the toggle button can poke outside
     <div className="relative h-full flex-shrink-0">
       <motion.aside
-        animate={{ width: collapsed ? 72 : 260 }}
-        transition={{ duration: 0.25, ease: 'easeInOut' }}
-        className="flex flex-col h-full bg-card border-r border-border overflow-hidden"
+        animate={{ width: collapsed ? 74 : 264 }}
+        transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+        className="flex flex-col h-full bg-white/80 dark:bg-[#130C1C]/85 backdrop-blur-2xl border-r border-white/60 dark:border-white/[0.08] overflow-hidden shadow-sm shadow-black/[0.02]"
       >
-        {/* ── Logo ── */}
+        {/* ── Brand Logo Header ── */}
         <div className={cn(
-          'flex items-center h-16 border-b border-border flex-shrink-0 transition-all duration-250',
-          collapsed ? 'px-0 justify-center' : 'px-4 gap-3'
+          'flex items-center h-16 border-b border-white/50 dark:border-white/[0.07] flex-shrink-0 transition-all',
+          collapsed ? 'px-0 justify-center' : 'px-5 gap-3'
         )}>
-          <div className="flex-shrink-0 w-9 h-9 rounded-xl gradient-bg flex items-center justify-center shadow-md">
+          <div className="flex-shrink-0 w-9 h-9 rounded-xl gradient-sunset flex items-center justify-center shadow-md shadow-rose-950/25 ring-2 ring-rose-500/20">
             <QrCode className="w-5 h-5 text-white" />
           </div>
           <AnimatePresence initial={false}>
@@ -129,22 +128,23 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
                 transition={{ duration: 0.2 }}
                 className="flex flex-col overflow-hidden whitespace-nowrap"
               >
-                <span className="font-bold text-lg leading-tight tracking-tight text-foreground">AttendX</span>
+                <span className="font-bold text-lg leading-tight tracking-tight text-foreground">
+                  AttendX
+                </span>
               </motion.div>
             )}
           </AnimatePresence>
         </div>
 
-        {/* ── Nav ── */}
-        <nav className="flex-1 py-3 space-y-0.5 px-2 overflow-y-auto overflow-x-hidden">
+        {/* ── Navigation List ── */}
+        <nav className="flex-1 py-4 space-y-1 px-2.5 overflow-y-auto overflow-x-hidden">
           {navItems.map((item) => {
-            // Header item
             if (item.isHeader) {
               return !collapsed ? (
                 <div key={item.label} className="pt-4 pb-1.5 px-3">
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{item.label}</p>
+                  <p className="text-[11px] font-semibold text-muted-foreground/80">{item.label}</p>
                 </div>
-              ) : <div key={item.label} className="pt-2 border-t border-border mx-2" />
+              ) : <div key={item.label} className="pt-2 border-t border-border/40 mx-2" />
             }
             if (!item.path || !item.icon) return null
             const Icon = item.icon
@@ -156,16 +156,16 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
               <Link key={item.path} to={item.path} aria-current={isActive ? 'page' : undefined}>
                 <div
                   className={cn(
-                    'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-150 cursor-pointer',
+                    'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 cursor-pointer',
                     collapsed && 'justify-center px-0',
                     isActive
-                      ? 'bg-primary/10 text-primary font-medium'
-                      : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                      ? 'bg-gradient-to-r from-rose-500/15 via-rose-500/10 to-orange-500/5 text-rose-600 dark:text-rose-400 font-semibold border-l-2 border-rose-500 shadow-sm shadow-rose-950/5'
+                      : 'text-muted-foreground hover:bg-rose-500/[0.06] hover:text-foreground'
                   )}
                 >
                   <Icon className={cn(
-                    'w-5 h-5 flex-shrink-0',
-                    isActive ? 'text-primary' : ''
+                    'w-4 h-4 flex-shrink-0 transition-colors',
+                    isActive ? 'text-rose-500 dark:text-rose-400' : 'group-hover:text-foreground'
                   )} aria-hidden="true" />
 
                   <AnimatePresence initial={false}>
@@ -176,7 +176,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
                         animate={{ opacity: 1, width: 'auto' }}
                         exit={{ opacity: 0, width: 0 }}
                         transition={{ duration: 0.15 }}
-                        className="text-sm truncate overflow-hidden whitespace-nowrap flex-1"
+                        className="text-xs font-medium truncate overflow-hidden whitespace-nowrap flex-1"
                       >
                         {item.label}
                       </motion.span>
@@ -184,7 +184,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
                   </AnimatePresence>
 
                   {isActive && !collapsed && (
-                    <span className="ml-auto w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
+                    <span className="ml-auto w-1.5 h-1.5 rounded-full gradient-sunset flex-shrink-0 shadow-sm shadow-rose-500/50" />
                   )}
                 </div>
               </Link>
@@ -203,18 +203,18 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
                 onClick={() => setVisitorOpen(!visitorOpen)}
                 title="Visitor Management"
                 className={cn(
-                  'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-150 cursor-pointer text-muted-foreground hover:bg-accent hover:text-foreground',
-                  isVisitorRoute && 'bg-primary/5 text-primary font-medium',
+                  'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-150 cursor-pointer text-muted-foreground hover:bg-rose-500/[0.06] hover:text-foreground',
+                  isVisitorRoute && 'bg-rose-500/10 text-rose-500 font-medium',
                   collapsed && 'justify-center px-0'
                 )}
               >
-                <Building2 className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
+                <Building2 className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
                 {!collapsed && (
                   <>
-                    <span className="text-sm flex-1 text-left truncate">Visitor Desk</span>
+                    <span className="text-xs flex-1 text-left truncate font-medium">Visitor Desk</span>
                     <ChevronDown
                       className={cn(
-                        'w-4 h-4 transition-transform duration-200 opacity-60',
+                        'w-3.5 h-3.5 transition-transform duration-200 opacity-60',
                         visitorOpen && 'transform rotate-180'
                       )}
                     />
@@ -240,8 +240,8 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
                             className={cn(
                               'flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer',
                               isVActive
-                                ? 'bg-primary/10 text-primary font-medium'
-                                : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                                ? 'bg-rose-500/10 text-rose-500 font-semibold'
+                                : 'text-muted-foreground hover:bg-rose-500/[0.04] hover:text-foreground'
                             )}
                           >
                             <VIcon className="w-3.5 h-3.5 flex-shrink-0" />
@@ -257,32 +257,30 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
           )}
         </nav>
 
-        {/* ── Legal & Version Footer ── */}
+        {/* ── Legal Footer ── */}
         {!collapsed && (
-          <div className="px-3 py-1.5 border-t border-border/50 flex items-center justify-center gap-2 text-[10px] text-muted-foreground/70 select-none">
-            <Link to="/privacy" className="hover:text-primary transition-colors">Privacy</Link>
+          <div className="px-3 py-2 border-t border-white/50 dark:border-white/[0.07] flex items-center justify-center gap-2 text-[10px] text-muted-foreground/70 select-none">
+            <Link to="/privacy" className="hover:text-rose-500 transition-colors">Privacy</Link>
             <span>•</span>
-            <Link to="/terms" className="hover:text-primary transition-colors">Terms</Link>
-            <span>•</span>
-            <span>AttendX v2.0</span>
+            <Link to="/terms" className="hover:text-rose-500 transition-colors">Terms</Link>
           </div>
         )}
 
-        {/* ── Logout ── */}
+        {/* ── Logout Button ── */}
         <div className={cn(
-          'p-2 border-t border-border flex-shrink-0',
+          'p-2.5 border-t border-white/50 dark:border-white/[0.07] flex-shrink-0',
           collapsed && 'flex justify-center'
         )}>
           <button
             onClick={logout}
             title="Logout"
             className={cn(
-              'flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground',
+              'flex items-center gap-3 px-3 py-2 rounded-xl text-muted-foreground',
               'hover:bg-red-500/10 hover:text-red-500 transition-all duration-150',
-              collapsed ? 'justify-center px-0 w-10' : 'w-full'
+              collapsed ? 'justify-center px-0 w-10 h-10' : 'w-full'
             )}
           >
-            <LogOut className="w-5 h-5 flex-shrink-0" />
+            <LogOut className="w-4 h-4 flex-shrink-0" />
             <AnimatePresence initial={false}>
               {!collapsed && (
                 <motion.span
@@ -291,7 +289,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
                   animate={{ opacity: 1, width: 'auto' }}
                   exit={{ opacity: 0, width: 0 }}
                   transition={{ duration: 0.15 }}
-                  className="text-sm overflow-hidden whitespace-nowrap"
+                  className="text-xs font-semibold overflow-hidden whitespace-nowrap"
                 >
                   Logout
                 </motion.span>
@@ -301,19 +299,19 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
         </div>
       </motion.aside>
 
-      {/* ── Toggle button — lives outside the overflow-hidden aside ── */}
+      {/* ── Floating Toggle Button ── */}
       <button
         onClick={onToggle}
         aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         className={cn(
-          'absolute top-[72px] -right-3 z-20',
+          'absolute top-[70px] -right-3 z-30',
           'w-6 h-6 rounded-full',
-          'bg-card border-2 border-border',
+          'bg-white dark:bg-[#1C122A] border border-white/80 dark:border-white/20',
           'flex items-center justify-center',
-          'shadow-md hover:shadow-lg',
-          'hover:bg-primary hover:border-primary hover:text-white',
+          'shadow-md shadow-rose-950/20 hover:shadow-lg',
+          'hover:bg-rose-500 hover:border-rose-500 hover:text-white',
           'text-muted-foreground',
-          'transition-all duration-150',
+          'transition-all duration-150 cursor-pointer',
         )}
       >
         {collapsed

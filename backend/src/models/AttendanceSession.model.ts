@@ -9,16 +9,15 @@ export interface IAttendanceSession extends Document {
   subjectId: mongoose.Types.ObjectId;
   teacherId: mongoose.Types.ObjectId;
   sessionCode: string;
+  passwordCode?: string;
   qrToken: string;
   qrCodeData: string;
-  passwordCode: string;
   startTime: Date;
   expiryTime: Date;
   status: SessionStatus;
   duration: number;
   totalPresent: number;
   autoCreated: boolean;
-  // New fields
   sessionType: SessionType;
   capacity: number | null;
   verificationMode: VerificationMode;
@@ -34,35 +33,31 @@ export interface IAttendanceSession extends Document {
 
 const AttendanceSessionSchema = new Schema<IAttendanceSession>(
   {
-    subjectId: { type: Schema.Types.ObjectId, ref: 'Subject', required: true },
-    teacherId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-    sessionCode: { type: String, required: true, unique: true },
-    qrToken: { type: String, required: true, unique: true },
-    qrCodeData: { type: String, required: true },
-    passwordCode: { type: String, required: true },
-    startTime: { type: Date, required: true, default: Date.now },
-    expiryTime: { type: Date, required: true },
-    status: { type: String, enum: ['active', 'ended', 'expired'], default: 'active' },
-    duration: { type: Number, default: 15 },
+    subjectId:    { type: Schema.Types.ObjectId, ref: 'Subject', required: true },
+    teacherId:    { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    sessionCode:  { type: String, required: true, unique: true },
+    passwordCode: { type: String, default: null },
+    qrToken:      { type: String, required: true, unique: true },
+    qrCodeData:   { type: String, required: true },
+    startTime:    { type: Date, required: true, default: Date.now },
+    expiryTime:   { type: Date, required: true },
+    status:       { type: String, enum: ['active', 'ended', 'expired'], default: 'active' },
+    duration:     { type: Number, default: 15 },
     totalPresent: { type: Number, default: 0 },
-    autoCreated: { type: Boolean, default: false },
+    autoCreated:  { type: Boolean, default: false },
     sessionType: {
       type: String,
       enum: ['class', 'seminar', 'workshop', 'event', 'lab'],
       default: 'class',
     },
-    capacity: { type: Number, default: null },
-    verificationMode: {
-      type: String,
-      enum: ['strict', 'open', 'invite'],
-      default: 'strict',
-    },
+    capacity:           { type: Number, default: null },
+    verificationMode:   { type: String, enum: ['strict', 'open', 'invite'], default: 'strict' },
     gracePeriodMinutes: { type: Number, default: 0 },
-    qrRefreshSeconds: { type: Number, default: 20 },
-    coHosts: [{ type: Schema.Types.ObjectId, ref: 'User' }],
-    title: { type: String, default: null },
-    venue: { type: String, default: null },
-    inviteList: [{ type: String }],
+    qrRefreshSeconds:   { type: Number, default: 20 },
+    coHosts:            [{ type: Schema.Types.ObjectId, ref: 'User' }],
+    title:              { type: String, default: null },
+    venue:              { type: String, default: null },
+    inviteList:         [{ type: String }],
   },
   { timestamps: true }
 );

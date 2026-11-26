@@ -32,6 +32,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Security audit report (never commit or serve)
+AUDIT.md
+
 # System & IDE files
 .DS_Store
 Thumbs.db

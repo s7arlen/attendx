@@ -11,12 +11,12 @@ export const hashToken = (rawToken: string): string => {
   return crypto.createHash('sha256').update(rawToken).digest('hex');
 };
 
-/** Short human-readable pass code, e.g. VIS-A3B9 */
+/** Short human-readable pass code, e.g. VIS-A3B9K2 */
 export const generatePassCode = (): string => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
   for (let i = 0; i < 6; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
+    code += chars.charAt(crypto.randomInt(0, chars.length));
   }
   return `VIS-${code}`;
 };

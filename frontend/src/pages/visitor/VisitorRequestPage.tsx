@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   QrCode, User2, Phone, Mail, Building2, Calendar,
   Clock, Users, FileText, CheckCircle2, ChevronRight,
-  ChevronDown, Loader2, AlertCircle, Sparkles, ShieldCheck,
+  ChevronDown, Loader2, AlertCircle, MoreHorizontal, ShieldCheck,
   ArrowRight, RefreshCw, Briefcase, Award,
 } from 'lucide-react'
 import api from '@/lib/axios'
@@ -48,7 +48,7 @@ const CATEGORIES = [
   { value: 'interview', label: 'Interview',       icon: Award },
   { value: 'vendor',    label: 'Vendor / Sales',  icon: Briefcase },
   { value: 'official',  label: 'Official',        icon: ShieldCheck },
-  { value: 'other',     label: 'Other',           icon: Sparkles },
+  { value: 'other',     label: 'Other',           icon: MoreHorizontal },
 ]
 
 export default function VisitorRequestPage() {

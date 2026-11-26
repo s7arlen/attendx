@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { escapeHtml } from './security';
 
 // Create transporter — configure via .env
 // Supports Gmail (SMTP), SendGrid, Mailtrap, or any SMTP provider
@@ -36,11 +37,11 @@ export const sendPasswordResetEmail = async (
     html: `
       <div style="font-family:sans-serif;max-width:480px;margin:auto;padding:32px">
         <h2 style="color:#2563EB;margin-bottom:8px">AttendX</h2>
-        <p>Hi <strong>${userName}</strong>,</p>
+        <p>Hi <strong>${escapeHtml(userName)}</strong>,</p>
         <p>You requested a password reset. Use the code below — it expires in <strong>15 minutes</strong>.</p>
         <div style="background:#f3f4f6;border-radius:12px;padding:24px;text-align:center;margin:24px 0">
           <p style="margin:0;font-size:13px;color:#6b7280;letter-spacing:1px;text-transform:uppercase">Reset Code</p>
-          <p style="margin:8px 0 0;font-size:40px;font-weight:bold;letter-spacing:12px;color:#1f2937;font-family:monospace">${resetCode}</p>
+          <p style="margin:8px 0 0;font-size:40px;font-weight:bold;letter-spacing:12px;color:#1f2937;font-family:monospace">${escapeHtml(resetCode)}</p>
         </div>
         <p style="color:#6b7280;font-size:13px">
           If you didn't request this, you can safely ignore this email. Your password won't change.
@@ -74,14 +75,14 @@ export const sendVisitorRequestEmail = async (
       <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:32px">
         <h2 style="color:#2563EB;margin-bottom:4px">AttendX Campus Pass</h2>
         <p style="color:#6b7280;font-size:13px;margin-bottom:24px">Visit Request Received</p>
-        <p>Hi <strong>${visitorName}</strong>,</p>
-        <p>Your visit request has been submitted and is <strong>pending approval</strong> from <strong>${hostName}</strong>.</p>
+        <p>Hi <strong>${escapeHtml(visitorName)}</strong>,</p>
+        <p>Your visit request has been submitted and is <strong>pending approval</strong> from <strong>${escapeHtml(hostName)}</strong>.</p>
         <div style="background:#f8f7ff;border:1px solid #e0d9ff;border-radius:12px;padding:20px;margin:20px 0">
           <table style="width:100%;font-size:13px;border-collapse:collapse">
-            <tr><td style="padding:4px 0;color:#6b7280;width:120px">Host</td><td style="color:#1f2937;font-weight:600">${hostName}</td></tr>
-            <tr><td style="padding:4px 0;color:#6b7280">Department</td><td style="color:#1f2937;font-weight:600">${department}</td></tr>
-            <tr><td style="padding:4px 0;color:#6b7280">Visit Date</td><td style="color:#1f2937;font-weight:600">${visitDate}</td></tr>
-            <tr><td style="padding:4px 0;color:#6b7280">Purpose</td><td style="color:#1f2937;font-weight:600">${purpose}</td></tr>
+            <tr><td style="padding:4px 0;color:#6b7280;width:120px">Host</td><td style="color:#1f2937;font-weight:600">${escapeHtml(hostName)}</td></tr>
+            <tr><td style="padding:4px 0;color:#6b7280">Department</td><td style="color:#1f2937;font-weight:600">${escapeHtml(department)}</td></tr>
+            <tr><td style="padding:4px 0;color:#6b7280">Visit Date</td><td style="color:#1f2937;font-weight:600">${escapeHtml(visitDate)}</td></tr>
+            <tr><td style="padding:4px 0;color:#6b7280">Purpose</td><td style="color:#1f2937;font-weight:600">${escapeHtml(purpose)}</td></tr>
           </table>
         </div>
         <p style="color:#6b7280;font-size:13px">You will receive another email with your QR pass once the host approves your request.</p>
@@ -118,12 +119,12 @@ export const sendVisitorApprovedEmail = async (
       <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:32px;background:#ffffff;border:1px solid #e2e8f0;border-radius:16px">
         <h2 style="color:#4f46e5;margin-bottom:4px;font-size:22px">AttendX Campus Pass</h2>
         <p style="color:#64748b;font-size:13px;margin-bottom:20px">Visit Approved</p>
-        <p style="color:#1e293b;font-size:15px">Hi <strong>${visitorName}</strong>,</p>
-        <p style="color:#334155;font-size:14px;line-height:1.5">Your visit request has been <strong style="color:#16a34a">approved</strong> by <strong>${hostName}</strong>.</p>
+        <p style="color:#1e293b;font-size:15px">Hi <strong>${escapeHtml(visitorName)}</strong>,</p>
+        <p style="color:#334155;font-size:14px;line-height:1.5">Your visit request has been <strong style="color:#16a34a">approved</strong> by <strong>${escapeHtml(hostName)}</strong>.</p>
         <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:20px;margin:20px 0;text-align:center">
           <p style="margin:0 0 6px;font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:1px;font-weight:600">Your Pass Code</p>
-          <p style="margin:0;font-size:30px;font-weight:800;letter-spacing:5px;color:#0f172a;font-family:monospace">${passCode}</p>
-          <p style="margin:8px 0 0;font-size:13px;color:#475569">Valid for: <strong>${visitDate}</strong></p>
+          <p style="margin:0;font-size:30px;font-weight:800;letter-spacing:5px;color:#0f172a;font-family:monospace">${escapeHtml(passCode)}</p>
+          <p style="margin:8px 0 0;font-size:13px;color:#475569">Valid for: <strong>${escapeHtml(visitDate)}</strong></p>
         </div>
         <div style="text-align:center;margin:24px 0">
           <img src="cid:visitor-qr-code" alt="Visitor QR Pass" style="width:200px;height:200px;border-radius:12px;border:1px solid #e2e8f0;display:inline-block" />
@@ -159,8 +160,8 @@ export const sendAttendanceWarningEmail = async (
 
   const subjectRows = lowSubjects.map(s => `
     <tr>
-      <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#1e293b;font-weight:600">${s.subjectName}</td>
-      <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#64748b;font-family:monospace;font-size:13px">${s.subjectCode}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#1e293b;font-weight:600">${escapeHtml(s.subjectName)}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#64748b;font-family:monospace;font-size:13px">${escapeHtml(s.subjectCode)}</td>
       <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;text-align:center">${s.present}/${s.total}</td>
       <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;text-align:center">
         <span style="background:${s.percentage < 60 ? '#fef2f2' : '#fff7ed'};color:${s.percentage < 60 ? '#dc2626' : '#ea580c'};padding:3px 10px;border-radius:999px;font-weight:700;font-size:13px">${s.percentage}%</span>
@@ -190,7 +191,7 @@ export const sendAttendanceWarningEmail = async (
           <p style="margin:6px 0 0;color:#c2410c;font-size:13px">Your attendance has dropped below 75% in one or more subjects.</p>
         </div>
 
-        <p style="color:#334155;font-size:15px">Hi <strong>${studentName}</strong>,</p>
+        <p style="color:#334155;font-size:15px">Hi <strong>${escapeHtml(studentName)}</strong>,</p>
         <p style="color:#475569;font-size:14px;line-height:1.6">
           This is an automated reminder that your attendance is currently below the required <strong>75% threshold</strong> in the following subject(s). 
           Please attend classes regularly to avoid being marked as a defaulter.
@@ -247,9 +248,9 @@ export const sendVisitorRejectedEmail = async (
     html: `
       <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:32px">
         <h2 style="color:#2563EB;margin-bottom:4px">AttendX Campus Pass</h2>
-        <p>Hi <strong>${visitorName}</strong>,</p>
-        <p>Unfortunately, your visit request to meet <strong>${hostName}</strong> could not be approved at this time.</p>
-        ${reason ? `<p style="color:#6b7280;font-size:13px">Reason: ${reason}</p>` : ''}
+        <p>Hi <strong>${escapeHtml(visitorName)}</strong>,</p>
+        <p>Unfortunately, your visit request to meet <strong>${escapeHtml(hostName)}</strong> could not be approved at this time.</p>
+        ${reason ? `<p style="color:#6b7280;font-size:13px">Reason: ${escapeHtml(reason)}</p>` : ''}
         <p style="color:#6b7280;font-size:13px">If you believe this is an error, please contact the department directly.</p>
         <p style="color:#6b7280;font-size:12px;margin-top:32px">— The AttendX Team</p>
       </div>

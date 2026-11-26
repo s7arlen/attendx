@@ -87,7 +87,7 @@ async function autoStartSessions() {
       // Generate QR assets
       const newId = new mongoose.Types.ObjectId();
       const sessionIdStr = newId.toString();
-      const { secureToken, passwordCode, sessionCode, qrCodeData } =
+      const { secureToken, sessionCode, qrCodeData } =
         await generateSessionAssets(sessionIdStr, subject._id.toString(), subject.subjectCode);
 
       const startTime  = new Date(ist);
@@ -100,7 +100,6 @@ async function autoStartSessions() {
         sessionCode,
         qrToken:      secureToken,
         qrCodeData,
-        passwordCode,
         startTime,
         expiryTime,
         status:       'active',
@@ -114,7 +113,7 @@ async function autoStartSessions() {
       await createNotification(
         entry.teacherId.toString(),
         '📋 Attendance Session Started',
-        `Your ${subject.subjectName} class starts in 2 minutes. Attendance session is live. Code: ${passwordCode}`,
+        `Your ${subject.subjectName} class starts in 2 minutes. Attendance session is live. Session code: ${sessionCode}`,
         'info',
         '/teacher/sessions'
       );
