@@ -24,15 +24,28 @@ type Mode = 'choose' | 'camera' | 'manual'
 // 'registering' → device not registered yet, show register prompt
 // 'biometric'   → device registered, fire biometric immediately
 // 'face'        → facial recognition verification
-type Step = 'registering' | 'biometric' | 'face' | 'verify-method'
+type Step = 'registering' | 'biometric' | 'face' | 'face-register' | 'verify-method'
 
 interface ValidatedSession {
-  id:          string
-  subject?:    { _id?: string; subjectName?: string; subjectCode?: string }
-  qrToken:     string
-  sessionType?: string
-  venue?:      string | null
-  title?:      string | null
+  id:              string
+  subject?:        { _id?: string; subjectName?: string; subjectCode?: string }
+  qrToken:         string
+  sessionType?:    string
+  venue?:          string | null
+  title?:          string | null
+  geoFenceEnabled?: boolean
+  geoRadiusMeters?: number | null
+}
+
+const getOptionalCoords = async (): Promise<{ latitude?: number; longitude?: number }> => {
+  if (!navigator.geolocation) return {}
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+      () => resolve({}),
+      { enableHighAccuracy: true, timeout: 7000 }
+    )
+  })
 }
 
 // ─── QR Scanner ──────────────────────────────────────────────────────────────
@@ -161,12 +174,7 @@ export default function ScanQRPage() {
   // ── After session validated — decide step ────────────────────────────────
   const proceedWithSession = (validated: ValidatedSession) => {
     setSession(validated)
-    // Check if device is registered — use store flag for speed
-    if (user?.hasWebAuthn) {
-      setStep('verify-method')
-    } else {
-      setStep('registering')
-    }
+    setStep('verify-method')
   }
 
   // ── Validate QR payload ──────────────────────────────────────────────────
@@ -180,12 +188,14 @@ export default function ScanQRPage() {
         return
       }
       proceedWithSession({
-        id:          res.session?.id || sessionId,
-        subject:     res.session?.subject,
-        qrToken:     secureToken,
-        sessionType: res.session?.sessionType,
-        venue:       res.session?.venue,
-        title:       res.session?.title,
+        id:              res.session?.id || sessionId,
+        subject:         res.session?.subject,
+        qrToken:         secureToken,
+        sessionType:     res.session?.sessionType,
+        venue:           res.session?.venue,
+        title:           res.session?.title,
+        geoFenceEnabled: !!res.session?.geoFenceEnabled,
+        geoRadiusMeters: res.session?.geoRadiusMeters ?? null,
       })
     } catch (err) {
       const error = err as ApiError
@@ -218,12 +228,14 @@ export default function ScanQRPage() {
         return
       }
       proceedWithSession({
-        id:          res.session.id,
-        subject:     res.session.subject,
-        qrToken:     res.session.qrToken,
-        sessionType: res.session.sessionType,
-        venue:       res.session.venue,
-        title:       res.session.title,
+        id:              res.session.id,
+        subject:         res.session.subject,
+        qrToken:         res.session.qrToken,
+        sessionType:     res.session.sessionType,
+        venue:           res.session.venue,
+        title:           res.session.title,
+        geoFenceEnabled: !!res.session.geoFenceEnabled,
+        geoRadiusMeters: res.session.geoRadiusMeters ?? null,
       })
     } catch (err) {
       const error = err as ApiError
@@ -239,10 +251,12 @@ export default function ScanQRPage() {
     if (!target) return
     setBiometricBusy(true)
     try {
+      const coords = target.geoFenceEnabled ? await getOptionalCoords() : {}
       const result = await webauthnService.verifyAttendanceWithBiometric({
         sessionId:   target.id,
         subjectId:   target.subject?._id || '',
         secureToken: target.qrToken,
+        ...coords,
       })
       setLateEntry(result.data?.isLate || false)
       setShowDone(true)
@@ -287,6 +301,10 @@ export default function ScanQRPage() {
   const triggerFacialRecognition = async (s?: ValidatedSession) => {
     const target = s || session
     if (!target) return
+    if (!user?.hasFaceDescriptor) {
+      setStep('face-register')
+      return
+    }
     setFacialRecognitionBusy(true)
     setStep('face')
     // The FacialRecognitionCapture component will call onSuccess with descriptor
@@ -297,11 +315,13 @@ export default function ScanQRPage() {
     if (!target) return
     setFacialRecognitionBusy(true)
     try {
+      const coords = target.geoFenceEnabled ? await getOptionalCoords() : {}
       const result = await attendanceService.verifyAttendanceWithFace({
         sessionId:   target.id,
         subjectId:   target.subject?._id || '',
         secureToken: target.qrToken,
         faceDescriptor,
+        ...coords,
       })
       setLateEntry(result.data?.isLate || false)
       setShowDone(true)
@@ -493,8 +513,12 @@ export default function ScanQRPage() {
                   <button
                     onClick={() => {
                       setVerificationMethod('biometric')
-                      setStep('biometric')
-                      triggerBiometric()
+                      if (user?.hasWebAuthn) {
+                        setStep('biometric')
+                        triggerBiometric()
+                      } else {
+                        setStep('registering')
+                      }
                     }}
                     className="flex flex-col items-center gap-2 p-4 rounded-2xl glass-card glass-card-hover border border-white/60 dark:border-white/[0.08] group"
                   >
@@ -609,6 +633,33 @@ export default function ScanQRPage() {
                 <Button variant="ghost" className="w-full gap-2 text-xs" onClick={reset}>
                   <ArrowLeft className="w-3.5 h-3.5" /> Scan a different QR
                 </Button>
+              </div>
+            )}
+
+            {/* Facial Recognition Enrollment (first-time inline setup) */}
+            {step === 'face-register' && (
+              <div className="space-y-4">
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-300">
+                  No face profile found on your account yet. Enroll once now (3 frames) to mark attendance.
+                </div>
+                <FacialRecognitionCapture
+                  mode="register"
+                  isLoading={facialRecognitionBusy}
+                  onCancel={() => setStep('verify-method')}
+                  onSuccess={async (descriptor) => {
+                    setFacialRecognitionBusy(true)
+                    try {
+                      await attendanceService.registerFace(descriptor)
+                      updateUser({ hasFaceDescriptor: true })
+                      toast({ title: 'Face enrolled!', description: 'Marking your attendance now…', variant: 'success' })
+                      await handleFaceVerified(descriptor)
+                    } catch (err) {
+                      const error = err as ApiError
+                      toast({ title: 'Enrollment failed', description: error.response?.data?.message || 'Could not enroll face.', variant: 'destructive' })
+                      setFacialRecognitionBusy(false)
+                    }
+                  }}
+                />
               </div>
             )}
 

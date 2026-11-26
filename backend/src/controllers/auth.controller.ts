@@ -7,7 +7,7 @@ import path from 'path';
 import { User } from '../models/User.model';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../utils/jwt';
 import { createAuditLog, getClientIp } from '../utils/auditLogger';
-import { sendPasswordResetEmail } from '../utils/mailer';
+import { sendPasswordResetEmail, sendEmailVerificationCode } from '../utils/mailer';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { hashSha256, safeEqualHex } from '../utils/security';
 import { z } from 'zod';
@@ -37,7 +37,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
   try {
     const validation = registerSchema.safeParse(req.body);
     if (!validation.success) {
-      res.status(400).json({ success: false, message: 'Validation error', errors: validation.error.errors });
+      res.status(400).json({ success: false, message: 'Validation error', errors: validation.error.issues });
       return;
     }
 
@@ -51,15 +51,31 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
     const salt = await bcrypt.genSalt(12);
     const passwordHash = await bcrypt.hash(password, salt);
+    const verifyCode = crypto.randomInt(100000, 999999).toString();
+    const verifyExpiry = new Date(Date.now() + 15 * 60 * 1000);
 
     const user = await User.create({
-      name, email, passwordHash, role, department, year, section, rollNumber, phone,
+      name,
+      email,
+      passwordHash,
+      role,
+      department,
+      year,
+      section,
+      rollNumber,
+      phone,
+      isEmailVerified: false,
+      emailVerifyToken: hashSha256(verifyCode),
+      emailVerifyExpires: verifyExpiry,
+      emailVerifyAttempts: 0,
     });
 
     const accessToken = generateAccessToken({ userId: user._id.toString(), role: user.role, email: user.email });
     const refreshToken = generateRefreshToken({ userId: user._id.toString(), role: user.role, email: user.email });
 
     await User.findByIdAndUpdate(user._id, { refreshToken: hashSha256(refreshToken) });
+
+    sendEmailVerificationCode(user.email, user.name, verifyCode).catch(() => {});
 
     await createAuditLog(user._id.toString(), 'REGISTER', 'User', user._id.toString(), { role }, getClientIp(req));
 
@@ -76,6 +92,9 @@ export const register = async (req: Request, res: Response): Promise<void> => {
           year: user.year,
           section: user.section,
           rollNumber: user.rollNumber,
+          isEmailVerified: false,
+          hasWebAuthn: false,
+          hasFaceDescriptor: false,
         },
         accessToken,
         refreshToken,
@@ -129,6 +148,9 @@ export const login = async (req: Request, res: Response): Promise<void> => {
           section: user.section,
           rollNumber: user.rollNumber,
           avatar: user.avatar,
+          isEmailVerified: !!user.isEmailVerified,
+          hasWebAuthn: Array.isArray(user.webauthnCredentials) && user.webauthnCredentials.length > 0,
+          hasFaceDescriptor: !!user.faceDescriptor?.descriptor?.length,
         },
         accessToken,
         refreshToken,
@@ -217,7 +239,7 @@ export const updateProfile = async (req: AuthRequest, res: Response): Promise<vo
   try {
     const validation = updateProfileSchema.safeParse(req.body);
     if (!validation.success) {
-      res.status(400).json({ success: false, errors: validation.error.errors });
+      res.status(400).json({ success: false, errors: validation.error.issues });
       return;
     }
     const allowed = validation.data;
@@ -400,8 +422,90 @@ export const deleteMyAccount = async (req: AuthRequest, res: Response): Promise<
       User.findByIdAndDelete(userId),
     ]);
 
-    res.json({ success: true, message: 'Your account and associated personal data have been deleted.' });
+    res.json({
+      success: true,
+      message: 'Your account and associated personal data have been deleted.',
+    });
   } catch (error: any) {
     res.status(500).json({ success: false, message: 'Account deletion failed' });
+  }
+};
+
+// ── EMAIL VERIFICATION ─────────────────────────────────────────
+export const sendEmailVerification = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const user = await User.findById(req.user!.userId);
+    if (!user) {
+      res.status(404).json({ success: false, message: 'User not found' });
+      return;
+    }
+    if (user.isEmailVerified) {
+      res.json({ success: true, message: 'Email is already verified.' });
+      return;
+    }
+
+    const verifyCode = crypto.randomInt(100000, 999999).toString();
+    user.emailVerifyToken = hashSha256(verifyCode);
+    user.emailVerifyExpires = new Date(Date.now() + 15 * 60 * 1000);
+    user.emailVerifyAttempts = 0;
+    await user.save();
+
+    const emailSent = await sendEmailVerificationCode(user.email, user.name, verifyCode);
+    const isDev = process.env.NODE_ENV === 'development';
+
+    res.json({
+      success: true,
+      message: emailSent ? 'Verification code sent to your email.' : 'Verification code generated.',
+      ...(isDev && !emailSent && { devVerifyCode: verifyCode }),
+    });
+  } catch {
+    res.status(500).json({ success: false, message: 'Failed to send verification code' });
+  }
+};
+
+export const verifyEmail = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { code } = req.body;
+    if (!code || typeof code !== 'string') {
+      res.status(400).json({ success: false, message: 'Verification code required' });
+      return;
+    }
+
+    const user = await User.findById(req.user!.userId);
+    if (!user) {
+      res.status(404).json({ success: false, message: 'User not found' });
+      return;
+    }
+    if (user.isEmailVerified) {
+      res.json({ success: true, message: 'Email already verified.' });
+      return;
+    }
+    if (!user.emailVerifyToken || !user.emailVerifyExpires || user.emailVerifyExpires <= new Date() || (user.emailVerifyAttempts ?? 0) >= 5) {
+      user.emailVerifyToken = undefined;
+      user.emailVerifyExpires = undefined;
+      user.emailVerifyAttempts = 0;
+      await user.save();
+      res.status(400).json({ success: false, message: 'Verification code is invalid or expired.' });
+      return;
+    }
+
+    const isValid = safeEqualHex(user.emailVerifyToken, hashSha256(code.trim()));
+    if (!isValid) {
+      user.emailVerifyAttempts = (user.emailVerifyAttempts ?? 0) + 1;
+      await user.save();
+      res.status(400).json({ success: false, message: 'Invalid verification code.' });
+      return;
+    }
+
+    user.isEmailVerified = true;
+    user.emailVerifyToken = undefined;
+    user.emailVerifyExpires = undefined;
+    user.emailVerifyAttempts = 0;
+    await user.save();
+
+    await createAuditLog(user._id.toString(), 'VERIFY_EMAIL', 'User', user._id.toString(), {}, getClientIp(req));
+    res.json({ success: true, message: 'Email verified successfully.' });
+  } catch {
+    res.status(500).json({ success: false, message: 'Email verification failed' });
   }
 };

@@ -111,3 +111,43 @@ export function getTrustedClientIp(req: Request): string {
   // Rely on Express `trust proxy` configuration rather than spoofing-prone raw X-Forwarded-For[0]
   return req.ip || req.socket.remoteAddress || 'unknown';
 }
+
+export function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+export function checkGeoFence(
+  geoFence: { latitude?: number; longitude?: number; radiusMeters?: number } | null | undefined,
+  latitude: unknown,
+  longitude: unknown
+): { allowed: boolean; distanceMeters?: number; message?: string } {
+  if (!geoFence || typeof geoFence.latitude !== 'number' || typeof geoFence.longitude !== 'number') {
+    return { allowed: true };
+  }
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    return {
+      allowed: false,
+      message: 'Location permission is required to mark attendance for this classroom session.',
+    };
+  }
+  const radius = geoFence.radiusMeters && geoFence.radiusMeters > 0 ? geoFence.radiusMeters : 150;
+  const dist = calculateDistanceMeters(geoFence.latitude, geoFence.longitude, lat, lng);
+  if (dist > radius) {
+    return {
+      allowed: false,
+      distanceMeters: Math.round(dist),
+      message: `Outside classroom geofence (${Math.round(dist)}m away; limit ${radius}m).`,
+    };
+  }
+  return { allowed: true, distanceMeters: Math.round(dist) };
+}

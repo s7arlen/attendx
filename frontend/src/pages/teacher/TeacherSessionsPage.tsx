@@ -533,6 +533,10 @@ export default function TeacherSessionsPage() {
   const [gracePeriod, setGracePeriod] = useState('0')
   const [venue, setVenue] = useState('')
   const [inviteList, setInviteList] = useState('')
+  const [enableGeoFence, setEnableGeoFence] = useState(false)
+  const [geoRadiusMeters, setGeoRadiusMeters] = useState('150')
+  const [geoCoords, setGeoCoords] = useState<{ latitude: number; longitude: number } | null>(null)
+  const [locatingGeo, setLocatingGeo] = useState(false)
   const [subjectError, setSubjectError] = useState(false)
   const [liveSession, setLiveSession] = useState<AttendanceSession | null>(null)
   const [historyFilter, setHistoryFilter] = useState<string>('all')
@@ -569,6 +573,8 @@ export default function TeacherSessionsPage() {
       setGracePeriod('0')
       setVenue('')
       setInviteList('')
+      setEnableGeoFence(false)
+      setGeoCoords(null)
       setSubjectError(false)
       setLiveSession(session)
     },
@@ -887,6 +893,69 @@ export default function TeacherSessionsPage() {
                 />
               </div>
             </div>
+
+            {/* Optional Classroom Geofencing */}
+            <div className="rounded-xl border border-border/70 p-3 space-y-2.5 bg-muted/20">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-xs font-semibold flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-primary" />
+                    Classroom Geofencing (optional)
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Require students to be within radius of this room
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={enableGeoFence ? 'default' : 'outline'}
+                  loading={locatingGeo}
+                  onClick={() => {
+                    if (enableGeoFence) {
+                      setEnableGeoFence(false)
+                      setGeoCoords(null)
+                      return
+                    }
+                    if (!navigator.geolocation) {
+                      toast({ title: 'Geolocation unsupported', variant: 'destructive' })
+                      return
+                    }
+                    setLocatingGeo(true)
+                    navigator.geolocation.getCurrentPosition(
+                      (pos) => {
+                        setGeoCoords({ latitude: pos.coords.latitude, longitude: pos.coords.longitude })
+                        setEnableGeoFence(true)
+                        setLocatingGeo(false)
+                        toast({ title: 'Classroom location captured', variant: 'success' })
+                      },
+                      () => {
+                        setLocatingGeo(false)
+                        toast({ title: 'Location permission denied', description: 'Allow location access to lock classroom coordinates.', variant: 'destructive' })
+                      },
+                      { enableHighAccuracy: true, timeout: 8000 }
+                    )
+                  }}
+                >
+                  {enableGeoFence ? 'Enabled' : 'Set Location'}
+                </Button>
+              </div>
+              {enableGeoFence && geoCoords && (
+                <div className="flex items-center justify-between gap-3 pt-1">
+                  <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-mono">
+                    Locked ({geoCoords.latitude.toFixed(4)}, {geoCoords.longitude.toFixed(4)})
+                  </span>
+                  <Select value={geoRadiusMeters} onValueChange={setGeoRadiusMeters}>
+                    <SelectTrigger className="w-28 h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {[50, 100, 150, 300, 500].map((r) => (
+                        <SelectItem key={r} value={String(r)}>{r}m radius</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
           </div>
 
           <DialogFooter className="pt-2">
@@ -910,6 +979,9 @@ export default function TeacherSessionsPage() {
                   inviteList: inviteList
                     ? inviteList.split(',').map(r => r.trim().toUpperCase()).filter(Boolean)
                     : [],
+                  geoFence: enableGeoFence && geoCoords
+                    ? { latitude: geoCoords.latitude, longitude: geoCoords.longitude, radiusMeters: parseInt(geoRadiusMeters) || 150 }
+                    : null,
                 } as any)
               }}
             >

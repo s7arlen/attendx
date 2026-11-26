@@ -3,7 +3,11 @@ import { AttendanceSession } from '@/types';
 
 export const attendanceService = {
   // Teacher
-  startSession: async (data: { subjectId: string; duration?: number }) => {
+  startSession: async (data: {
+    subjectId: string;
+    duration?: number;
+    geoFence?: { latitude: number; longitude: number; radiusMeters: number } | null;
+  }) => {
     const res = await api.post('/attendance/start-session', data);
     return res.data.data.session as AttendanceSession;
   },
@@ -75,6 +79,8 @@ export const attendanceService = {
     subjectId: string;
     secureToken: string;
     faceDescriptor: number[];
+    latitude?: number;
+    longitude?: number;
   }) => {
     const res = await api.post('/attendance/face/verify', data);
     return res.data;

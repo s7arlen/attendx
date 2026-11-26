@@ -1,12 +1,15 @@
-import { useQuery } from '@tanstack/react-query'
-import { Brain, AlertTriangle, TrendingUp, Users, Activity, Info } from 'lucide-react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Brain, AlertTriangle, TrendingUp, Users, Activity, Info, RefreshCw } from 'lucide-react'
 import { academicService } from '@/services/academic.service'
-import { RiskLevel, User } from '@/types'
+import { RiskLevel, User, ApiError } from '@/types'
+import { Button } from '@/components/ui/button'
+import { toast } from '@/hooks/useToast'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
 
 const RISK_COLORS: Record<string, string> = { HIGH: '#ef4444', MODERATE: '#f59e0b', LOW: '#22c55e', UNASSESSED: '#94a3b8' }
 
 export default function RiskAnalyticsPage() {
+  const queryClient = useQueryClient()
   const { data, isLoading } = useQuery({
     queryKey: ['admin-risk-analytics'],
     queryFn: academicService.getRiskDashboard,
@@ -15,6 +18,18 @@ export default function RiskAnalyticsPage() {
   const { data: mlInfo } = useQuery({
     queryKey: ['ml-info'],
     queryFn: () => academicService.getMLInfo(),
+  })
+
+  const retrainMutation = useMutation({
+    mutationFn: academicService.retrainMLModel,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ml-info'] })
+      toast({ title: 'Model retrained', description: 'ML classifier updated from institutional student data.', variant: 'success' })
+    },
+    onError: (err) => {
+      const error = err as ApiError
+      toast({ title: 'Retraining failed', description: error.response?.data?.message || 'Unable to retrain model.', variant: 'destructive' })
+    },
   })
 
   if (isLoading) return (
@@ -47,17 +62,31 @@ export default function RiskAnalyticsPage() {
       </div>
 
       {/* Model Status */}
-      <div className="glass-card border rounded-2xl p-4 flex items-center gap-4">
-        <div className={`w-2.5 h-2.5 rounded-full ${(mlInfo as any)?.mlAvailable ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-        <div className="flex-1">
-          <p className="text-sm font-semibold">
-            Model Status: {(mlInfo as any)?.mlAvailable ? 'Active' : 'Fallback Mode'}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {(mlInfo as any)?.modelInfo?.metadata?.model_name || 'Rule-Based Engine'} ·{' '}
-            Accuracy: {(mlInfo as any)?.modelInfo?.metadata?.evaluation?.test_accuracy ? `${((mlInfo as any).modelInfo.metadata.evaluation.test_accuracy * 100).toFixed(1)}%` : 'N/A'}
-          </p>
+      <div className="glass-card border rounded-2xl p-4 flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-4">
+          <div className={`w-2.5 h-2.5 rounded-full ${(mlInfo as any)?.mlAvailable ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+          <div>
+            <p className="text-sm font-semibold">
+              Model Status: {(mlInfo as any)?.mlAvailable ? 'Active' : 'Fallback Mode'}
+              {(mlInfo as any)?.modelInfo?.metadata?.data_type ? ` (${(mlInfo as any).modelInfo.metadata.data_type})` : ''}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {(mlInfo as any)?.modelInfo?.metadata?.model_name || 'Rule-Based Engine'} ·{' '}
+              Accuracy: {(mlInfo as any)?.modelInfo?.metadata?.evaluation?.test_accuracy ? `${((mlInfo as any).modelInfo.metadata.evaluation.test_accuracy * 100).toFixed(1)}%` : 'N/A'}
+            </p>
+          </div>
         </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-1.5"
+          loading={retrainMutation.isPending}
+          onClick={() => retrainMutation.mutate()}
+        >
+          <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
+          Retrain on Institutional Data
+        </Button>
       </div>
 
       {/* Summary Cards */}

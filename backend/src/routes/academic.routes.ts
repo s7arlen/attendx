@@ -6,7 +6,7 @@ import {
   enterMarks, getAssessmentResults,
   getStudentAcademicProfile,
   getStudentRisk, triggerRiskForStudent, getRiskDashboard,
-  getMLInfo, whatIfSimulate,
+  getMLInfo, retrainMLModel, whatIfSimulate,
   createIntervention, getInterventions, updateIntervention,
 } from '../controllers/academic.controller';
 
@@ -40,6 +40,7 @@ router.post('/risk/:studentId/trigger', authorize('teacher','admin'), triggerRis
 
 // ── ML info & What-If ─────────────────────────────────────────
 router.get('/ml/info', authorize('teacher','admin'), getMLInfo);
+router.post('/ml/retrain', authorize('admin'), retrainMLModel);
 router.post('/whatif', authorize('teacher','admin','student'), whatIfSimulate);
 
 // ── Interventions ─────────────────────────────────────────────

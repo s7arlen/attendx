@@ -16,6 +16,7 @@ export interface RegisterPayload {
   section?: string;
   rollNumber?: string;
   phone?: string;
+  turnstileToken?: string;
 }
 
 export interface AuthResponse {
@@ -67,13 +68,22 @@ export const authService = {
     await api.post('/auth/change-password', { currentPassword, newPassword });
   },
 
-  forgotPassword: async (email: string): Promise<{ devResetCode?: string }> => {
-    const res = await api.post('/auth/forgot-password', { email });
+  forgotPassword: async (email: string, turnstileToken?: string): Promise<{ devResetCode?: string }> => {
+    const res = await api.post('/auth/forgot-password', { email, turnstileToken });
     return res.data;
   },
 
   resetPassword: async (email: string, resetCode: string, newPassword: string): Promise<void> => {
     await api.post('/auth/reset-password', { email, resetCode, newPassword });
+  },
+
+  sendVerification: async (): Promise<{ devVerifyCode?: string }> => {
+    const res = await api.post('/auth/send-verification');
+    return res.data;
+  },
+
+  verifyEmail: async (code: string): Promise<void> => {
+    await api.post('/auth/verify-email', { code });
   },
 
   deleteAccount: async (password: string): Promise<void> => {

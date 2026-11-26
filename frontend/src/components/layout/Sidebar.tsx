@@ -49,6 +49,7 @@ const visitorSubItems: NavItem[] = [
 const teacherNavItems: NavItem[] = [
   { label: 'Dashboard',          icon: LayoutDashboard, path: '/teacher' },
   { label: 'My Subjects',        icon: BookOpen,        path: '/teacher/subjects' },
+  { label: 'My Timetable',       icon: Calendar,        path: '/teacher/timetable' },
   { label: 'Auto Schedule',      icon: Zap,             path: '/teacher/smart-timetable' },
   { label: 'Assessments',        icon: ClipboardCheck,  path: '/teacher/assessments' },
   { label: 'Early Warning',      icon: AlertTriangle,   path: '/teacher/risk' },
@@ -70,6 +71,7 @@ const securityNavItems: NavItem[] = [
   { label: 'QR Passes',          icon: QrCodeIcon,     path: '/visitor/passes' },
   { label: 'Entry/Exit History', icon: History,        path: '/visitor/history' },
   { label: 'Events',             icon: CalendarDays,   path: '/visitor/events' },
+  { label: 'Profile',            icon: UserCircle,     path: '/visitor/profile' },
 ]
 
 const studentNavItems: NavItem[] = [

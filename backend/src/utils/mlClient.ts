@@ -44,7 +44,7 @@ export async function mlPredict(payload: MLPredictRequest): Promise<MLPredictRes
       signal: AbortSignal.timeout(10000), // 10s timeout
     });
     if (!res.ok) return null;
-    return await res.json();
+    return (await res.json()) as MLPredictResponse;
   } catch {
     return null; // ML service unavailable — caller uses rule-based fallback
   }
@@ -66,6 +66,29 @@ export async function mlModelInfo(): Promise<any> {
       signal: AbortSignal.timeout(5000),
     });
     return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+export interface MLTrainingSample {
+  attendancePercentage: number;
+  internalMarksAverage: number;
+  quizAverage: number;
+  assignmentCompletion: number;
+  riskLabel: 0 | 1 | 2;
+}
+
+export async function mlTrainModel(samples: MLTrainingSample[]): Promise<{ trained: boolean; metadata: any } | null> {
+  try {
+    const res = await fetch(`${ML_SERVICE_URL}/model/train`, {
+      method: 'POST',
+      headers: mlHeaders(),
+      body: JSON.stringify({ samples }),
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as { trained: boolean; metadata: any };
   } catch {
     return null;
   }

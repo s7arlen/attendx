@@ -14,6 +14,7 @@ import { useAuthStore } from '@/store/authStore'
 import { toast } from '@/hooks/useToast'
 import { USN_REGEX } from '@/lib/usn'
 import { ApiError } from '@/types'
+import { TurnstileWidget } from '@/components/shared/TurnstileWidget'
 
 const schema = z.object({
   name:       z.string().min(2, 'Name must be at least 2 characters'),
@@ -35,6 +36,7 @@ type FormData = z.infer<typeof schema>
 export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [turnstileToken, setTurnstileToken] = useState('')
   const navigate = useNavigate()
   const { setAuth } = useAuthStore()
 
@@ -51,6 +53,7 @@ export default function RegisterPage() {
       const payload = {
         ...data,
         year: data.year ? parseInt(data.year) : undefined,
+        turnstileToken: turnstileToken || undefined,
       }
       const result = await authService.register(payload)
       setAuth(result.user, result.accessToken, result.refreshToken)
@@ -213,6 +216,8 @@ export default function RegisterPage() {
                 Privacy Policy
               </Link>.
             </p>
+
+            <TurnstileWidget onVerify={setTurnstileToken} />
 
             <Button type="submit" className="w-full mt-2" size="lg" loading={loading} variant="gradient">
               Create Account

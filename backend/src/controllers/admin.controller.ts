@@ -128,7 +128,7 @@ export const createTeacher = async (req: AuthRequest, res: Response): Promise<vo
   try {
     const validation = createUserSchema.safeParse({ ...req.body, role: 'teacher' });
     if (!validation.success) {
-      res.status(400).json({ success: false, errors: validation.error.errors });
+      res.status(400).json({ success: false, errors: validation.error.issues });
       return;
     }
     const { name, email, password, department, phone } = validation.data;
@@ -149,7 +149,7 @@ export const updateTeacher = async (req: AuthRequest, res: Response): Promise<vo
     const { id } = req.params;
     if (!isValidObjectId(id)) { res.status(400).json({ success: false, message: 'Invalid teacher ID' }); return; }
     const parsed = updateTeacherSchema.safeParse(req.body);
-    if (!parsed.success) { res.status(400).json({ success: false, errors: parsed.error.errors }); return; }
+    if (!parsed.success) { res.status(400).json({ success: false, errors: parsed.error.issues }); return; }
     const teacher = await User.findOneAndUpdate(
       { _id: id, role: 'teacher' },
       { $set: parsed.data },
@@ -240,7 +240,7 @@ export const createStudent = async (req: AuthRequest, res: Response): Promise<vo
   try {
     const validation = createUserSchema.safeParse({ ...req.body, role: 'student' });
     if (!validation.success) {
-      res.status(400).json({ success: false, errors: validation.error.errors });
+      res.status(400).json({ success: false, errors: validation.error.issues });
       return;
     }
     const { name, email, password, department, year, section, rollNumber, phone } = validation.data;
@@ -261,7 +261,7 @@ export const updateStudent = async (req: AuthRequest, res: Response): Promise<vo
     const { id } = req.params;
     if (!isValidObjectId(id)) { res.status(400).json({ success: false, message: 'Invalid student ID' }); return; }
     const parsed = updateStudentSchema.safeParse(req.body);
-    if (!parsed.success) { res.status(400).json({ success: false, errors: parsed.error.errors }); return; }
+    if (!parsed.success) { res.status(400).json({ success: false, errors: parsed.error.issues }); return; }
     const student = await User.findOneAndUpdate(
       { _id: id, role: 'student' },
       { $set: parsed.data },
@@ -336,7 +336,7 @@ export const createSubject = async (req: AuthRequest, res: Response): Promise<vo
   try {
     const validation = createSubjectSchema.safeParse(req.body);
     if (!validation.success) {
-      res.status(400).json({ success: false, errors: validation.error.errors });
+      res.status(400).json({ success: false, errors: validation.error.issues });
       return;
     }
 
@@ -377,7 +377,7 @@ export const updateSubject = async (req: AuthRequest, res: Response): Promise<vo
     const { id } = req.params;
     if (!isValidObjectId(id)) { res.status(400).json({ success: false, message: 'Invalid subject ID' }); return; }
     const parsed = updateSubjectSchema.safeParse(req.body);
-    if (!parsed.success) { res.status(400).json({ success: false, errors: parsed.error.errors }); return; }
+    if (!parsed.success) { res.status(400).json({ success: false, errors: parsed.error.issues }); return; }
     const subject = await Subject.findByIdAndUpdate(id, { $set: parsed.data }, { new: true })
       .populate('assignedTeacher', 'name email');
     if (!subject) { res.status(404).json({ success: false, message: 'Subject not found' }); return; }
@@ -447,7 +447,7 @@ export const createTimetable = async (req: AuthRequest, res: Response): Promise<
   try {
     const parsed = timetableSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ success: false, errors: parsed.error.errors }); return;
+      res.status(400).json({ success: false, errors: parsed.error.issues }); return;
     }
     const { subjectId, teacherId, day, startTime, endTime, room } = parsed.data;
 
@@ -486,7 +486,7 @@ export const updateTimetable = async (req: AuthRequest, res: Response): Promise<
     const { id } = req.params;
     if (!isValidObjectId(id)) { res.status(400).json({ success: false, message: 'Invalid timetable ID' }); return; }
     const parsed = timetableSchema.safeParse(req.body);
-    if (!parsed.success) { res.status(400).json({ success: false, errors: parsed.error.errors }); return; }
+    if (!parsed.success) { res.status(400).json({ success: false, errors: parsed.error.issues }); return; }
     const { subjectId, teacherId, day, startTime, endTime, room } = parsed.data;
 
     const conflict = await Timetable.findOne({

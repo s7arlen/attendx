@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { CheckCircle2, XCircle, Clock, AlertTriangle, Filter, Fingerprint, WifiOff, QrCode, KeyRound, Receipt } from 'lucide-react'
+import { CheckCircle2, XCircle, Clock, AlertTriangle, Filter, Fingerprint, WifiOff, QrCode, KeyRound, Receipt, ScanFace } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -17,18 +17,20 @@ import { AttendanceRecord, ApiError } from '@/types'
 import { toast } from '@/hooks/useToast'
 
 const METHOD_ICON: Record<string, any> = {
-  biometric:    Fingerprint,
-  offline_sync: WifiOff,
-  qr:           QrCode,
-  password:     KeyRound,
-  manual:       KeyRound,
+  biometric:          Fingerprint,
+  facial_recognition: ScanFace,
+  offline_sync:       WifiOff,
+  qr:                 QrCode,
+  password:           KeyRound,
+  manual:             KeyRound,
 }
 const METHOD_LABEL: Record<string, string> = {
-  biometric:    'Biometric',
-  offline_sync: 'Offline Sync',
-  qr:           'QR Scan',
-  password:     'Password',
-  manual:       'Manual',
+  biometric:          'Biometric',
+  facial_recognition: 'Facial Recognition',
+  offline_sync:       'Offline Sync',
+  qr:                 'QR Scan',
+  password:           'Password',
+  manual:             'Manual',
 }
 
 export default function StudentAttendancePage() {

@@ -27,6 +27,11 @@ export interface IAttendanceSession extends Document {
   title: string | null;
   venue: string | null;
   inviteList: string[];
+  geoFence?: {
+    latitude: number;
+    longitude: number;
+    radiusMeters: number;
+  } | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -58,6 +63,11 @@ const AttendanceSessionSchema = new Schema<IAttendanceSession>(
     title:              { type: String, default: null },
     venue:              { type: String, default: null },
     inviteList:         [{ type: String }],
+    geoFence: {
+      latitude:     { type: Number, min: -90, max: 90 },
+      longitude:    { type: Number, min: -180, max: 180 },
+      radiusMeters: { type: Number, min: 10, max: 5000, default: 150 },
+    },
   },
   { timestamps: true }
 );

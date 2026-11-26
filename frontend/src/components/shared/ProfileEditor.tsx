@@ -1,8 +1,9 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Eye, EyeOff, Save, KeyRound } from 'lucide-react'
+import { Eye, EyeOff, Save, KeyRound, Trash2, MailCheck, ShieldCheck } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -226,6 +227,187 @@ export function ChangePasswordCard() {
             Update Password
           </Button>
         </form>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ── Delete account card ──────────────────────────────────────────────────────
+export function DeleteAccountCard() {
+  const { logout } = useAuthStore()
+  const navigate = useNavigate()
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [password, setPassword] = useState('')
+  const [deleting, setDeleting] = useState(false)
+
+  return (
+    <Card className="border-destructive/30">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base text-destructive">
+          <Trash2 className="w-4 h-4" aria-hidden="true" />
+          Delete Account
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-muted-foreground">
+          Permanently remove your AttendX account and associated personal records. This action cannot be undone.
+        </p>
+        {!confirmOpen ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="border-destructive/40 text-destructive hover:bg-destructive/10"
+            onClick={() => setConfirmOpen(true)}
+          >
+            Delete My Account
+          </Button>
+        ) : (
+          <form
+            className="space-y-3 pt-1"
+            onSubmit={async (e) => {
+              e.preventDefault()
+              if (!password.trim()) {
+                toast({ title: 'Password required', description: 'Enter your current password to confirm deletion.', variant: 'destructive' })
+                return
+              }
+              setDeleting(true)
+              try {
+                await authService.deleteAccount(password)
+                toast({ title: 'Account deleted', description: 'Your account and personal records have been removed.', variant: 'success' })
+                logout()
+                navigate('/login')
+              } catch (err) {
+                const error = err as ApiError
+                toast({ title: 'Deletion failed', description: error.response?.data?.message || 'Could not delete account.', variant: 'destructive' })
+              } finally {
+                setDeleting(false)
+              }
+            }}
+          >
+            <Input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Confirm with your current password"
+              autoComplete="current-password"
+            />
+            <div className="flex items-center gap-2">
+              <Button type="submit" variant="destructive" size="sm" loading={deleting}>
+                Confirm Permanent Deletion
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={deleting}
+                onClick={() => {
+                  setConfirmOpen(false)
+                  setPassword('')
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </form>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ── Email verification card ──────────────────────────────────────────────────
+export function EmailVerificationCard() {
+  const { user, updateUser } = useAuthStore()
+  const [code, setCode] = useState('')
+  const [codeSent, setCodeSent] = useState(false)
+  const [devCode, setDevCode] = useState<string | undefined>()
+  const [sending, setSending] = useState(false)
+  const [verifying, setVerifying] = useState(false)
+
+  if (!user) return null
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <MailCheck className="w-4 h-4 text-primary" aria-hidden="true" />
+          Email Verification
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {user.isEmailVerified ? (
+          <div className="flex items-center gap-2.5 p-3 rounded-xl border bg-emerald-500/5 border-emerald-200 dark:border-emerald-900/50 text-sm text-emerald-700 dark:text-emerald-400">
+            <ShieldCheck className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
+            <span>Your email ({user.email}) is verified.</span>
+          </div>
+        ) : (
+          <>
+            <p className="text-xs text-muted-foreground">
+              Verify your institutional email address ({user.email}) with a 6-digit code.
+            </p>
+            {!codeSent ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                loading={sending}
+                onClick={async () => {
+                  setSending(true)
+                  try {
+                    const res = await authService.sendVerification()
+                    setCodeSent(true)
+                    if (res.devVerifyCode) setDevCode(res.devVerifyCode)
+                    toast({ title: 'Verification code sent', description: 'Check your email inbox.', variant: 'success' })
+                  } catch (err) {
+                    const error = err as ApiError
+                    toast({ title: 'Failed', description: error.response?.data?.message || 'Could not send code.', variant: 'destructive' })
+                  } finally {
+                    setSending(false)
+                  }
+                }}
+              >
+                Send Verification Code
+              </Button>
+            ) : (
+              <form
+                className="space-y-3"
+                onSubmit={async (e) => {
+                  e.preventDefault()
+                  if (!code.trim()) return
+                  setVerifying(true)
+                  try {
+                    await authService.verifyEmail(code.trim())
+                    updateUser({ isEmailVerified: true })
+                    toast({ title: 'Email verified!', variant: 'success' })
+                  } catch (err) {
+                    const error = err as ApiError
+                    toast({ title: 'Verification failed', description: error.response?.data?.message || 'Invalid code.', variant: 'destructive' })
+                  } finally {
+                    setVerifying(false)
+                  }
+                }}
+              >
+                {devCode && (
+                  <p className="text-xs font-mono text-amber-600 dark:text-amber-400">
+                    Dev preview code (SMTP unconfigured): {devCode}
+                  </p>
+                )}
+                <div className="flex gap-2">
+                  <Input
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                    placeholder="Enter 6-digit code"
+                    maxLength={6}
+                    className="font-mono tracking-widest"
+                  />
+                  <Button type="submit" size="sm" variant="gradient" loading={verifying}>
+                    Verify
+                  </Button>
+                </div>
+              </form>
+            )}
+          </>
+        )}
       </CardContent>
     </Card>
   )

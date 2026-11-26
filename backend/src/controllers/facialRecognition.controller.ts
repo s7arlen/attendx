@@ -10,7 +10,7 @@ import { AttendanceSession } from '../models/AttendanceSession.model';
 import { AttendanceRecord } from '../models/AttendanceRecord.model';
 import { Subject } from '../models/Subject.model';
 import { createAuditLog, getClientIp } from '../utils/auditLogger';
-import { isValidObjectId } from '../utils/security';
+import { isValidObjectId, checkGeoFence } from '../utils/security';
 
 const isValidDescriptor = (value: unknown): value is number[] =>
   Array.isArray(value) &&
@@ -129,6 +129,12 @@ export const verifyAttendanceWithFace = async (req: AuthRequest, res: Response):
 
     if (session.qrToken !== secureToken) {
       res.status(400).json({ success: false, message: 'Invalid QR code' });
+      return;
+    }
+
+    const geoCheck = checkGeoFence(session.geoFence, req.body?.latitude, req.body?.longitude);
+    if (!geoCheck.allowed) {
+      res.status(403).json({ success: false, message: geoCheck.message });
       return;
     }
 

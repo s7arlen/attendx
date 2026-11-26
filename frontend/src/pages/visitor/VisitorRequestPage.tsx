@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import api from '@/lib/axios'
 import { useThemeStore } from '@/store/themeStore'
+import { TurnstileWidget } from '@/components/shared/TurnstileWidget'
 
 // ── Validation Schema ───────────────────────────────────────
 const schema = z.object({
@@ -59,6 +60,7 @@ export default function VisitorRequestPage() {
   const [error, setError]               = useState('')
   const [visitId, setVisitId]           = useState('')
   const [showOptional, setShowOptional] = useState(false)
+  const [turnstileToken, setTurnstileToken] = useState('')
 
   // Smart defaults: today's date, 10:00 AM to 11:00 AM
   const todayStr = new Date().toISOString().split('T')[0]
@@ -120,6 +122,7 @@ export default function VisitorRequestPage() {
       const res = await api.post('/visitor/public/request', {
         ...data,
         accompanyingCount: parseInt(data.accompanyingCount || '0', 10),
+        turnstileToken: turnstileToken || undefined,
       })
       setVisitId(res.data.data.visitId)
       setSubmitted(true)
@@ -544,6 +547,8 @@ export default function VisitorRequestPage() {
                 Your approved digital QR Pass will be dispatched directly to your email address. Show it to campus security upon arrival.
               </span>
             </div>
+
+            <TurnstileWidget onVerify={setTurnstileToken} />
 
             {/* Submit Button */}
             <button

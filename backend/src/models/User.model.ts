@@ -30,6 +30,10 @@ export interface IUser extends Document {
   phone?: string;
   avatar?: string;
   isActive: boolean;
+  isEmailVerified: boolean;
+  emailVerifyToken?: string;
+  emailVerifyExpires?: Date;
+  emailVerifyAttempts?: number;
   refreshToken?: string;
   passwordResetToken?: string;
   passwordResetExpires?: Date;
@@ -55,6 +59,10 @@ const UserSchema = new Schema<IUser>(
     phone: { type: String, trim: true },
     avatar: { type: String },
     isActive: { type: Boolean, default: true },
+    isEmailVerified: { type: Boolean, default: false },
+    emailVerifyToken: { type: String },
+    emailVerifyExpires: { type: Date },
+    emailVerifyAttempts: { type: Number, default: 0 },
     refreshToken: { type: String },
     passwordResetToken: { type: String },
     passwordResetExpires: { type: Date },
@@ -101,7 +109,11 @@ UserSchema.methods.toJSON = function () {
   delete obj.passwordResetToken;
   delete obj.passwordResetExpires;
   delete obj.passwordResetAttempts;
+  delete obj.emailVerifyToken;
+  delete obj.emailVerifyExpires;
+  delete obj.emailVerifyAttempts;
   delete obj.webauthnChallenge;
+  obj.isEmailVerified = !!obj.isEmailVerified;
   // Replace webauthnCredentials with a simple boolean flag
   obj.hasWebAuthn = Array.isArray(obj.webauthnCredentials) && obj.webauthnCredentials.length > 0;
   obj.hasFaceDescriptor = !!obj.faceDescriptor?.descriptor?.length;

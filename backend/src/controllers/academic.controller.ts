@@ -68,7 +68,7 @@ export const createAssessment = async (req: AuthRequest, res: Response): Promise
   try {
     const parsed = createAssessmentSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ success: false, message: 'Validation error', errors: parsed.error.errors });
+      res.status(400).json({ success: false, message: 'Validation error', errors: parsed.error.issues });
       return;
     }
     const { title, type, subjectId, maxMarks, assessmentDate, dueDate, description } = parsed.data;
@@ -126,7 +126,7 @@ export const updateAssessment = async (req: AuthRequest, res: Response): Promise
     if (!isValidObjectId(id)) { res.status(400).json({ success: false, message: 'Invalid ID' }); return; }
     const parsed = updateAssessmentSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ success: false, errors: parsed.error.errors }); return;
+      res.status(400).json({ success: false, errors: parsed.error.issues }); return;
     }
     const assessment = await Assessment.findById(id);
     if (!assessment) { res.status(404).json({ success: false, message: 'Assessment not found' }); return; }
@@ -663,6 +663,49 @@ export const getMLInfo = async (req: AuthRequest, res: Response): Promise<void> 
   } catch { res.status(500).json({ success: false, message: 'Failed to load ML status' }); }
 };
 
+export const retrainMLModel = async (_req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const assessments = await RiskAssessment.find({
+      attendancePercentage: { $ne: null },
+      internalMarksAverage: { $ne: null },
+    }).sort({ createdAt: -1 }).limit(2000);
+
+    // Deduplicate latest record per student without sending any student PII
+    const latestByStudent = new Map<string, typeof assessments[number]>();
+    for (const a of assessments) {
+      const sid = a.studentId.toString();
+      if (!latestByStudent.has(sid)) latestByStudent.set(sid, a);
+    }
+
+    const samples = Array.from(latestByStudent.values()).map((a) => ({
+      attendancePercentage: Number(a.attendancePercentage ?? 75),
+      internalMarksAverage: Number(a.internalMarksAverage ?? 60),
+      quizAverage: Number(a.quizAverage ?? a.internalMarksAverage ?? 60),
+      assignmentCompletion: Number(a.assignmentCompletionRate ?? 75),
+      riskLabel: (a.riskLevel === 'HIGH' ? 2 : a.riskLevel === 'MODERATE' ? 1 : 0) as 0 | 1 | 2,
+    }));
+
+    if (samples.length < 15) {
+      res.status(400).json({
+        success: false,
+        message: `At least 15 assessed students are required for institutional retraining (currently ${samples.length}).`,
+      });
+      return;
+    }
+
+    const { mlTrainModel } = await import('../utils/mlClient');
+    const result = await mlTrainModel(samples);
+    if (!result) {
+      res.status(503).json({ success: false, message: 'ML service is unavailable or rejected training data.' });
+      return;
+    }
+
+    res.json({ success: true, message: 'ML model retrained on institutional data', data: result });
+  } catch {
+    res.status(500).json({ success: false, message: 'Failed to retrain ML model' });
+  }
+};
+
 // ── What-If Simulator ─────────────────────────────────────────
 export const whatIfSimulate = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -728,7 +771,7 @@ export const createIntervention = async (req: AuthRequest, res: Response): Promi
     const { Intervention } = await import('../models/Intervention.model');
     const parsed = createInterventionSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ success: false, message: 'Validation error', errors: parsed.error.errors }); return;
+      res.status(400).json({ success: false, message: 'Validation error', errors: parsed.error.issues }); return;
     }
     const { studentId, type, description, scheduledDate, followUpDate, notes } = parsed.data;
     if (req.user!.role === 'teacher' && !(await ensureTeacherHasStudent(req.user!.userId, studentId))) {
@@ -771,7 +814,7 @@ export const updateIntervention = async (req: AuthRequest, res: Response): Promi
     if (!isValidObjectId(id)) { res.status(400).json({ success: false, message: 'Invalid intervention ID' }); return; }
     const parsed = updateInterventionSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ success: false, errors: parsed.error.errors }); return;
+      res.status(400).json({ success: false, errors: parsed.error.issues }); return;
     }
     const intervention = await Intervention.findById(id);
     if (!intervention) { res.status(404).json({ success: false, message: 'Intervention not found' }); return; }

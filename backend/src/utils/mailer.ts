@@ -54,6 +54,38 @@ export const sendPasswordResetEmail = async (
   return true; // email was sent
 };
 
+export const sendEmailVerificationCode = async (
+  toEmail: string,
+  userName: string,
+  code: string
+): Promise<boolean> => {
+  const smtp = createTransporter();
+  if (!smtp) {
+    console.log(`\n📧 [DEV — no SMTP] Email verification for ${toEmail}: ${code}\n`);
+    return false;
+  }
+
+  await smtp.transporter.sendMail({
+    from: smtp.from,
+    to: toEmail,
+    subject: 'AttendX — Verify Your Email Address',
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:auto;padding:32px">
+        <h2 style="color:#2563EB;margin-bottom:8px">AttendX</h2>
+        <p>Hi <strong>${escapeHtml(userName)}</strong>,</p>
+        <p>Use the verification code below to confirm your institutional email address. It expires in <strong>15 minutes</strong>.</p>
+        <div style="background:#f3f4f6;border-radius:12px;padding:24px;text-align:center;margin:24px 0">
+          <p style="margin:0;font-size:13px;color:#6b7280;letter-spacing:1px;text-transform:uppercase">Verification Code</p>
+          <p style="margin:8px 0 0;font-size:40px;font-weight:bold;letter-spacing:12px;color:#1f2937;font-family:monospace">${escapeHtml(code)}</p>
+        </div>
+        <p style="color:#6b7280;font-size:12px;margin-top:32px">— The AttendX Team</p>
+      </div>
+    `,
+  });
+
+  return true;
+};
+
 export const sendVisitorRequestEmail = async (
   toEmail: string,
   visitorName: string,

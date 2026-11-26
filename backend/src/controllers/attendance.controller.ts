@@ -10,7 +10,13 @@ import { generateSessionAssets, generateFreshQR } from '../utils/qrGenerator';
 import { createAuditLog, getClientIp } from '../utils/auditLogger';
 import { emitToSession } from '../config/socket';
 import { Server } from 'socket.io';
-import { clampPagination, isValidObjectId, sanitizeCsvCell } from '../utils/security';
+import { clampPagination, isValidObjectId, sanitizeCsvCell, checkGeoFence } from '../utils/security';
+
+const geoFenceSchema = z.object({
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  radiusMeters: z.coerce.number().int().min(10).max(5000).default(150),
+}).nullable().optional();
 
 const startSessionSchema = z.object({
   subjectId: z.string().refine(isValidObjectId, 'Invalid subject ID'),
@@ -24,6 +30,7 @@ const startSessionSchema = z.object({
   venue: z.string().max(150).nullable().optional().default(null),
   inviteList: z.array(z.string().max(40)).max(500).optional().default([]),
   coHosts: z.array(z.string().refine(isValidObjectId, 'Invalid co-host ID')).max(20).optional().default([]),
+  geoFence: geoFenceSchema,
 });
 
 function buildSessionAccessFilter(sessionId: string, req: AuthRequest) {
@@ -44,7 +51,7 @@ export const startSession = async (req: AuthRequest, res: Response): Promise<voi
   try {
     const parsed = startSessionSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ success: false, message: 'Invalid session parameters', errors: parsed.error.errors });
+      res.status(400).json({ success: false, message: 'Invalid session parameters', errors: parsed.error.issues });
       return;
     }
 
@@ -60,6 +67,7 @@ export const startSession = async (req: AuthRequest, res: Response): Promise<voi
       venue,
       inviteList,
       coHosts,
+      geoFence,
     } = parsed.data;
 
     const subject = await Subject.findById(subjectId);
@@ -118,6 +126,7 @@ export const startSession = async (req: AuthRequest, res: Response): Promise<voi
       venue: venue || null,
       inviteList: inviteList.map((r) => r.trim().toUpperCase()),
       coHosts,
+      geoFence: geoFence ?? null,
     });
 
     const populated = await AttendanceSession.findById(session._id)
@@ -618,6 +627,8 @@ export const findSessionByCode = async (req: AuthRequest, res: Response): Promis
           venue: session.venue,
           title: session.title,
           gracePeriodMinutes: session.gracePeriodMinutes,
+          geoFenceEnabled: !!session.geoFence?.latitude,
+          geoRadiusMeters: session.geoFence?.radiusMeters ?? null,
         },
         alreadyMarked: !!alreadyMarked,
       },
@@ -669,6 +680,8 @@ export const validateQR = async (req: AuthRequest, res: Response): Promise<void>
           sessionType: session.sessionType,
           venue: session.venue,
           title: session.title,
+          geoFenceEnabled: !!session.geoFence?.latitude,
+          geoRadiusMeters: session.geoFence?.radiusMeters ?? null,
         },
         alreadyMarked: !!alreadyMarked,
       },

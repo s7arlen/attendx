@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { authService } from '@/services/auth.service'
 import { toast } from '@/hooks/useToast'
+import { TurnstileWidget } from '@/components/shared/TurnstileWidget'
 
 const schema = z.object({ email: z.string().email('Enter a valid email') })
 type Form = z.infer<typeof schema>
@@ -17,6 +18,7 @@ type Form = z.infer<typeof schema>
 export default function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
+  const [turnstileToken, setTurnstileToken] = useState('')
 
   const { register, handleSubmit, formState: { errors } } = useForm<Form>({
     resolver: zodResolver(schema),
@@ -25,7 +27,7 @@ export default function ForgotPasswordPage() {
   const onSubmit = async ({ email }: Form) => {
     setLoading(true)
     try {
-      await authService.forgotPassword(email)
+      await authService.forgotPassword(email, turnstileToken || undefined)
       setSent(true)
     } catch {
       toast({ title: 'Something went wrong', description: 'Please try again.', variant: 'destructive' })
@@ -59,6 +61,7 @@ export default function ForgotPasswordPage() {
                   <Input id="email" type="email" placeholder="you@university.edu" {...register('email')} />
                   {errors.email && <p className="text-xs text-destructive" role="alert">{errors.email.message}</p>}
                 </div>
+                <TurnstileWidget onVerify={setTurnstileToken} />
                 <Button type="submit" variant="gradient" className="w-full gap-2" loading={loading}>
                   <Mail className="w-4 h-4" aria-hidden="true" />
                   Send Reset Code

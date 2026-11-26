@@ -760,7 +760,7 @@ export const updateEvent = async (req: AuthRequest, res: Response): Promise<void
     const { eventId } = req.params;
     if (!isValidObjectId(eventId)) { res.status(400).json({ success: false, message: 'Invalid event ID' }); return; }
     const parsed = updateEventSchema.safeParse(req.body);
-    if (!parsed.success) { res.status(400).json({ success: false, errors: parsed.error.errors }); return; }
+    if (!parsed.success) { res.status(400).json({ success: false, errors: parsed.error.issues }); return; }
     const event = await VisitorEvent.findByIdAndUpdate(eventId, { $set: parsed.data }, { new: true });
     if (!event) { res.status(404).json({ success: false, message: 'Event not found' }); return; }
     res.json({ success: true, data: { event } });
@@ -847,7 +847,7 @@ export const publicVisitorRequest = async (req: Request, res: Response): Promise
   try {
     const parsed = publicVisitorRequestSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ success: false, message: 'Invalid request fields', errors: parsed.error.errors });
+      res.status(400).json({ success: false, message: 'Invalid request fields', errors: parsed.error.issues });
       return;
     }
 

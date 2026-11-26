@@ -12,7 +12,9 @@ export interface User {
   phone?: string;
   avatar?: string;
   isActive?: boolean;
+  isEmailVerified?: boolean;
   hasWebAuthn?: boolean;  // true when at least one biometric credential is registered
+  hasFaceDescriptor?: boolean;
   createdAt?: string;
 }
 

@@ -17,6 +17,8 @@ export const verifyAttendanceWithFaceSchema = z.object({
     .array(z.number().finite())
     .length(128, 'Face descriptor must contain exactly 128 finite numbers'),
   subjectId: z.string().optional(),
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
 });
 
 export type RegisterFaceInput = z.infer<typeof registerFaceSchema>;

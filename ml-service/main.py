@@ -268,8 +268,88 @@ def evaluate():
         "dataType": metadata.get('data_type'),
         "evaluation": metadata.get('evaluation', {}),
         "features": metadata.get('features', []),
-        "warning":  "Metrics based on SYNTHETIC data — retrain with real records for production",
+        "warning":  "Metrics based on SYNTHETIC data — retrain with real records for production" if metadata.get('data_type') == 'SYNTHETIC' else None,
     }
+
+
+class TrainingSample(BaseModel):
+    attendancePercentage: float = Field(..., ge=0, le=100)
+    internalMarksAverage: float = Field(..., ge=0, le=100)
+    quizAverage: float = Field(..., ge=0, le=100)
+    assignmentCompletion: float = Field(..., ge=0, le=100)
+    riskLabel: int = Field(..., ge=0, le=2)
+
+
+class TrainRequest(BaseModel):
+    samples: list[TrainingSample] = Field(..., min_length=15, max_length=5000)
+
+
+@app.post("/model/train", dependencies=[Depends(verify_ml_api_key)])
+def train_institutional(payload: TrainRequest):
+    """Retrain risk classifier on anonymized institutional student outcome samples."""
+    global model, metadata
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.model_selection import train_test_split
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.metrics import accuracy_score
+    from sklearn.pipeline import Pipeline
+
+    features = ['attendance_pct', 'internal_marks_avg', 'quiz_avg', 'assignment_pct']
+    X = np.array([
+        [s.attendancePercentage, s.internalMarksAverage, s.quizAverage, s.assignmentCompletion]
+        for s in payload.samples
+    ])
+    y = np.array([s.riskLabel for s in payload.samples])
+
+    unique_classes = np.unique(y)
+    if len(unique_classes) < 2:
+        raise HTTPException(status_code=400, detail="Training samples must include at least 2 risk classes.")
+
+    stratify_y = y if np.min(np.bincount(y)) >= 2 else None
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=stratify_y)
+
+    rf = Pipeline([('scaler', StandardScaler()), ('clf', RandomForestClassifier(n_estimators=100, max_depth=8, random_state=42, class_weight='balanced'))])
+    lr = Pipeline([('scaler', StandardScaler()), ('clf', LogisticRegression(max_iter=500, random_state=42, class_weight='balanced'))])
+
+    rf.fit(X_train, y_train)
+    lr.fit(X_train, y_train)
+    rf_acc = accuracy_score(y_test, rf.predict(X_test))
+    lr_acc = accuracy_score(y_test, lr.predict(X_test))
+
+    best_pipeline = rf if rf_acc >= lr_acc else lr
+    best_name = 'RandomForest' if rf_acc >= lr_acc else 'LogisticRegression'
+    best_acc = max(rf_acc, lr_acc)
+
+    feature_importance = {}
+    if best_name == 'RandomForest':
+        for fname, imp in zip(features, best_pipeline.named_steps['clf'].feature_importances_):
+            feature_importance[fname] = round(float(imp), 4)
+
+    os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
+    joblib.dump(best_pipeline, MODEL_PATH)
+
+    new_meta = {
+        'model_name': best_name,
+        'version': '2.1-institutional',
+        'training_date': datetime.now().isoformat(),
+        'data_type': 'INSTITUTIONAL',
+        'data_description': 'Anonymized institutional student academic records',
+        'training_samples': len(X_train),
+        'test_samples': len(X_test),
+        'features': features,
+        'feature_importance': feature_importance,
+        'evaluation': {
+            'test_accuracy': round(float(best_acc), 4),
+        },
+        'classes': ['LOW', 'MODERATE', 'HIGH'],
+    }
+    with open(META_PATH, 'w') as f:
+        json.dump(new_meta, f, indent=2)
+
+    model = best_pipeline
+    metadata = new_meta
+    return {"trained": True, "metadata": new_meta}
 
 if __name__ == "__main__":
     import uvicorn

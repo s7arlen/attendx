@@ -43,6 +43,8 @@ export const webauthnService = {
     sessionId:   string;
     subjectId:   string;
     secureToken: string;
+    latitude?:   number;
+    longitude?:  number;
   }) => {
     // 1. Get a challenge tied to this student
     const options = await webauthnService.beginAuthentication();

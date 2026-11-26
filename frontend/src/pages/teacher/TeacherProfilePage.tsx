@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { useMutation } from '@tanstack/react-query'
 import { useAuthStore } from '@/store/authStore'
 import { webauthnService } from '@/services/webauthn.service'
-import { ProfileEditCard, ChangePasswordCard } from '@/components/shared/ProfileEditor'
+import { ProfileEditCard, ChangePasswordCard, DeleteAccountCard, EmailVerificationCard } from '@/components/shared/ProfileEditor'
 import AvatarUpload from '@/components/shared/AvatarUpload'
 import { toast } from '@/hooks/useToast'
 import { formatDate } from '@/lib/utils'
@@ -91,6 +91,7 @@ export default function TeacherProfilePage() {
       </Card>
 
       <ProfileEditCard />
+      <EmailVerificationCard />
       <ChangePasswordCard />
 
       {/* Biometric */}
@@ -146,6 +147,8 @@ export default function TeacherProfilePage() {
           </Button>
         </CardContent>
       </Card>
+
+      <DeleteAccountCard />
     </div>
   )
 }

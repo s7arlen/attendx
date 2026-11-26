@@ -69,6 +69,7 @@ import VisitorAnalyticsPage from '@/pages/visitor/VisitorAnalyticsPage'
 import EventManagementPage from '@/pages/visitor/EventManagementPage'
 import VisitDetailPage from '@/pages/visitor/VisitDetailPage'
 import VisitorRequestPage from '@/pages/visitor/VisitorRequestPage'
+import SecurityProfilePage from '@/pages/visitor/SecurityProfilePage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -187,6 +188,7 @@ export default function App() {
             <Route path="history" element={<VisitorHistoryPage />} />
             <Route path="analytics" element={<VisitorAnalyticsPage />} />
             <Route path="events" element={<EventManagementPage />} />
+            <Route path="profile" element={<SecurityProfilePage />} />
           </Route>
 
           {/* Redirect /admin paths to /len-admin */}

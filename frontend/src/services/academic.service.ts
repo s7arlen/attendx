@@ -73,6 +73,11 @@ export const academicService = {
     return res.data.data as { mlAvailable: boolean; modelInfo: any };
   },
 
+  retrainMLModel: async () => {
+    const res = await api.post('/academic/ml/retrain');
+    return res.data;
+  },
+
   getStudentsBySubject: async (subjectId: string) => {
     const res = await api.get(`/academic/subjects/${subjectId}/students`);
     return res.data.data.students as User[];

@@ -8,6 +8,7 @@ import {
 import type {
   RegistrationResponseJSON,
   AuthenticationResponseJSON,
+  AuthenticatorTransport,
 } from '@simplewebauthn/types';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { User } from '../models/User.model';
@@ -16,7 +17,7 @@ import { AttendanceRecord } from '../models/AttendanceRecord.model';
 import { Subject } from '../models/Subject.model';
 import { createAuditLog, getClientIp } from '../utils/auditLogger';
 import { emitToSession } from '../config/socket';
-import { getAllowedOrigins, isValidObjectId } from '../utils/security';
+import { getAllowedOrigins, isValidObjectId, checkGeoFence } from '../utils/security';
 import { Server } from 'socket.io';
 
 const RP_NAME = 'AttendX';
@@ -31,7 +32,7 @@ export const beginRegistration = async (req: AuthRequest, res: Response): Promis
     if (!user) { res.status(404).json({ success: false, message: 'User not found' }); return; }
 
     const excludeCredentials = user.webauthnCredentials.map((c) => ({
-      id:         Buffer.from(c.credentialId, 'base64url'),
+      id:         c.credentialId,
       type:       'public-key' as const,
       transports: (c.transports ?? []) as AuthenticatorTransport[],
     }));
@@ -39,7 +40,7 @@ export const beginRegistration = async (req: AuthRequest, res: Response): Promis
     const options = await generateRegistrationOptions({
       rpName:                  RP_NAME,
       rpID:                    RP_ID,
-      userID:                  user._id.toString(),
+      userID:                  new TextEncoder().encode(user._id.toString()),
       userName:                user.email,
       userDisplayName:         user.name,
       attestationType:         'none',
@@ -84,11 +85,11 @@ export const completeRegistration = async (req: AuthRequest, res: Response): Pro
     }
 
     const { registrationInfo } = verification;
-    // v9 API: registrationInfo.credentialID, credentialPublicKey, counter, credentialDeviceType
-    const credId   = Buffer.from(registrationInfo.credentialID).toString('base64url');
-    const pubKey   = Buffer.from(registrationInfo.credentialPublicKey).toString('base64url');
-    const counter  = registrationInfo.counter;
-    const devType  = registrationInfo.credentialDeviceType;
+    // v14 API: in registrationInfo object
+    const credId   = (registrationInfo.credential as any).id;
+    const pubKey   = Buffer.from((registrationInfo.credential as any).publicKey).toString('base64url');
+    const counter  = (registrationInfo.credential as any).signCount || 0;
+    const devType  = registrationInfo.credentialDeviceType || 'unknown';
 
     user.webauthnCredentials.push({
       credentialId: credId,
@@ -121,7 +122,7 @@ export const beginAuthentication = async (req: AuthRequest, res: Response): Prom
     }
 
     const allowCredentials = user.webauthnCredentials.map((c) => ({
-      id:         Buffer.from(c.credentialId, 'base64url'),
+      id:         c.credentialId,
       type:       'public-key' as const,
       transports: (c.transports ?? []) as AuthenticatorTransport[],
     }));
@@ -169,6 +170,11 @@ export const verifyAttendanceWithBiometric = async (req: AuthRequest, res: Respo
       res.status(400).json({ success: false, message: 'Invalid QR code' }); return;
     }
 
+    const geoCheck = checkGeoFence(session.geoFence, (req.body as any)?.latitude, (req.body as any)?.longitude);
+    if (!geoCheck.allowed) {
+      res.status(403).json({ success: false, message: geoCheck.message }); return;
+    }
+
     // 2 — Duplicate check
     const existingRecord = await AttendanceRecord.findOne({ studentId: req.user!.userId, sessionId });
     if (existingRecord) {
@@ -193,12 +199,12 @@ export const verifyAttendanceWithBiometric = async (req: AuthRequest, res: Respo
       expectedOrigin:        getExpectedOrigins(),
       expectedRPID:          RP_ID,
       requireUserVerification: true,
-      authenticator: {
-        credentialID:        Buffer.from(storedCred.credentialId, 'base64url'),
-        credentialPublicKey: Buffer.from(storedCred.publicKey,    'base64url'),
-        counter:             storedCred.counter,
+      credential: {
+        id:                  storedCred.credentialId,
+        publicKey:           Buffer.from(storedCred.publicKey, 'base64url'),
+        signCount:           storedCred.counter,
         transports:          (storedCred.transports ?? []) as AuthenticatorTransport[],
-      },
+      } as any,
     });
 
     if (!verification.verified) {

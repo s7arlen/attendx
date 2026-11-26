@@ -1,0 +1,17 @@
+{
+  "name": "AttendX",
+  "short_name": "AttendX",
+  "description": "Smart QR, Biometric, and Campus Attendance Platform",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0A0610",
+  "theme_color": "#F43F5E",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -2,7 +2,7 @@ import { User, Mail, Building2, ShieldCheck } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useAuthStore } from '@/store/authStore'
-import { ProfileEditCard, ChangePasswordCard } from '@/components/shared/ProfileEditor'
+import { ProfileEditCard, ChangePasswordCard, DeleteAccountCard, EmailVerificationCard } from '@/components/shared/ProfileEditor'
 import AvatarUpload from '@/components/shared/AvatarUpload'
 
 export default function AdminProfilePage() {
@@ -52,7 +52,9 @@ export default function AdminProfilePage() {
       </Card>
 
       <ProfileEditCard />
+      <EmailVerificationCard />
       <ChangePasswordCard />
+      <DeleteAccountCard />
     </div>
   )
 }
