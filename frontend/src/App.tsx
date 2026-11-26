@@ -27,6 +27,7 @@ import ReportsPage from '@/pages/admin/ReportsPage'
 import AuditLogsPage from '@/pages/admin/AuditLogsPage'
 import DisputesPage from '@/pages/admin/DisputesPage'
 import AdminProfilePage from '@/pages/admin/AdminProfilePage'
+import AdminSettingsPage from '@/pages/admin/AdminSettingsPage'
 import RiskAnalyticsPage from '@/pages/admin/RiskAnalyticsPage'
 
 // Teacher Pages
@@ -140,6 +141,7 @@ export default function App() {
             <Route path="reports" element={<ReportsPage />} />
             <Route path="audit-logs" element={<AuditLogsPage />} />
             <Route path="disputes" element={<DisputesPage />} />
+            <Route path="settings" element={<AdminSettingsPage />} />
             <Route path="profile" element={<AdminProfilePage />} />
             <Route path="risk-analytics" element={<RiskAnalyticsPage />} />
           </Route>

@@ -23,6 +23,9 @@ export interface IAttendanceSession extends Document {
   verificationMode: VerificationMode;
   gracePeriodMinutes: number;
   qrRefreshSeconds: number;
+  qrLastRefreshedAt: Date;
+  previousQrToken?: string | null;
+  qrTokenRotatedAt?: Date | null;
   coHosts: mongoose.Types.ObjectId[];
   title: string | null;
   venue: string | null;
@@ -58,7 +61,10 @@ const AttendanceSessionSchema = new Schema<IAttendanceSession>(
     capacity:           { type: Number, default: null },
     verificationMode:   { type: String, enum: ['strict', 'open', 'invite'], default: 'strict' },
     gracePeriodMinutes: { type: Number, default: 0 },
-    qrRefreshSeconds:   { type: Number, default: 20 },
+    qrRefreshSeconds:   { type: Number, default: 15 },
+    qrLastRefreshedAt:  { type: Date, default: Date.now },
+    previousQrToken:    { type: String, default: null },
+    qrTokenRotatedAt:   { type: Date, default: null },
     coHosts:            [{ type: Schema.Types.ObjectId, ref: 'User' }],
     title:              { type: String, default: null },
     venue:              { type: String, default: null },

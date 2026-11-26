@@ -1,5 +1,5 @@
 import api from '@/lib/axios';
-import { User, Subject, Timetable, DashboardStats } from '@/types';
+import { User, Subject, Timetable, DashboardStats, SystemSettings } from '@/types';
 
 export const adminService = {
   // Dashboard
@@ -103,5 +103,15 @@ export const adminService = {
   updateUserRoleDept: async (id: string, data: { role?: string; department?: string }) => {
     const res = await api.patch(`/admin/users/${id}/role-dept`, data);
     return res.data.data.user as User;
+  },
+
+  // System settings
+  getSettings: async (): Promise<SystemSettings> => {
+    const res = await api.get('/admin/settings');
+    return res.data.data as SystemSettings;
+  },
+  updateSettings: async (data: { qrRefreshSeconds: number; applyToActiveSessions?: boolean }): Promise<SystemSettings> => {
+    const res = await api.put('/admin/settings', data);
+    return res.data.data as SystemSettings;
   },
 };

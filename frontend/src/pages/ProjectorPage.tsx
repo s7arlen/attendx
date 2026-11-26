@@ -7,7 +7,7 @@
  * session code — everything students need to scan and verify via biometrics.
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { QrCode, Users, Clock, MapPin, RefreshCw, CheckCircle, XCircle } from 'lucide-react'
 import api from '@/lib/axios'
@@ -25,6 +25,8 @@ interface ProjectorData {
   expiryTime: string
   gracePeriodMinutes: number
   qrRefreshSeconds: number
+  qrLastRefreshedAt?: string
+  nextRefreshInSeconds?: number
   totalPresent: number
   capacity: number | null
 }
@@ -50,30 +52,40 @@ export default function ProjectorPage() {
   const [data, setData] = useState<ProjectorData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [msLeft, setMsLeft] = useState(0)
-  const [qrCountdown, setQrCountdown] = useState(0)
+  const [qrCountdown, setQrCountdown] = useState(15)
   const [loading, setLoading] = useState(true)
+  const fetchingRef = useRef(false)
 
-  const fetchSession = async () => {
+  const fetchSession = useCallback(async () => {
+    if (!sessionCode || fetchingRef.current) return
+    fetchingRef.current = true
     try {
       const res = await api.get(`/attendance/projector/${sessionCode}`)
       const d: ProjectorData = res.data.data
+      const refreshSeconds = d.qrRefreshSeconds || 15
+      const nextCountdown =
+        d.nextRefreshInSeconds && d.nextRefreshInSeconds > 0
+          ? Math.min(d.nextRefreshInSeconds, refreshSeconds)
+          : refreshSeconds
+
       setData(d)
       setError(null)
+      setQrCountdown(nextCountdown)
 
       const effectiveExpiry = new Date(d.expiryTime).getTime() + d.gracePeriodMinutes * 60 * 1000
       setMsLeft(Math.max(0, effectiveExpiry - Date.now()))
     } catch (e: any) {
       setError(e.response?.data?.message || 'Session not found')
     } finally {
+      fetchingRef.current = false
       setLoading(false)
     }
-  }
+  }, [sessionCode])
 
   // Initial fetch
   useEffect(() => {
     fetchSession()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionCode])
+  }, [fetchSession])
 
   // Countdown timer & QR refresh counter (paused while tab is hidden)
   useEffect(() => {
@@ -88,9 +100,8 @@ export default function ProjectorPage() {
 
   // QR refresh counter + re-fetch (resumes immediately when tab returns visible)
   useEffect(() => {
-    if (!data) return
-    const refreshInterval = data.qrRefreshSeconds || 30
-    setQrCountdown(refreshInterval)
+    if (!data || data.status === 'ended' || data.status === 'expired') return
+    const refreshInterval = data.qrRefreshSeconds || 15
 
     const tick = setInterval(() => {
       if (document.hidden) return
@@ -106,7 +117,6 @@ export default function ProjectorPage() {
     const onVisibilityChange = () => {
       if (!document.hidden) {
         fetchSession()
-        setQrCountdown(refreshInterval)
       }
     }
     document.addEventListener('visibilitychange', onVisibilityChange)
@@ -115,8 +125,7 @@ export default function ProjectorPage() {
       clearInterval(tick)
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data?.qrRefreshSeconds, data?.expiryTime])
+  }, [data?.qrRefreshSeconds, data?.status, fetchSession])
 
   // Page title
   useEffect(() => {

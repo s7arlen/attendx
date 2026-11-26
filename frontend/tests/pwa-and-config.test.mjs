@@ -44,3 +44,18 @@ test('frontend uses Vite import.meta.env instead of browser-unsafe process.env o
   assert.match(socketSrc, /import\.meta\.env\.VITE_SOCKET_URL/);
   assert.match(socketSrc, /import\.meta\.env\.PROD/);
 });
+
+test('QR refresh defaults to 15s and Admin Settings page is registered', () => {
+  const projectorSrc = fs.readFileSync(path.resolve('src/pages/ProjectorPage.tsx'), 'utf8');
+  assert.match(projectorSrc, /qrRefreshSeconds \|\| 15/);
+  assert.doesNotMatch(projectorSrc, /qrRefreshSeconds \|\| 30/);
+
+  const teacherSessionsSrc = fs.readFileSync(path.resolve('src/pages/teacher/TeacherSessionsPage.tsx'), 'utf8');
+  assert.match(teacherSessionsSrc, /DEFAULT_QR_REFRESH = 15/);
+
+  const appSrc = fs.readFileSync(path.resolve('src/App.tsx'), 'utf8');
+  assert.match(appSrc, /path="settings"\s+element=\{<AdminSettingsPage \/>\}/);
+
+  const sidebarSrc = fs.readFileSync(path.resolve('src/components/layout/Sidebar.tsx'), 'utf8');
+  assert.match(sidebarSrc, /path:\s*'\/len-admin\/settings'/);
+});

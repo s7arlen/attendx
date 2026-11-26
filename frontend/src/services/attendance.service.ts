@@ -17,7 +17,7 @@ export const attendanceService = {
     return res.data;
   },
 
-  refreshQR: async (sessionId: string): Promise<{ qrCodeData: string; qrToken: string; refreshedAt: string }> => {
+  refreshQR: async (sessionId: string): Promise<{ qrCodeData: string; qrToken: string; qrRefreshSeconds?: number; refreshedAt: string }> => {
     const res = await api.post(`/attendance/refresh-qr/${sessionId}`);
     return res.data.data;
   },

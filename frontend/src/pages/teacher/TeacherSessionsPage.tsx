@@ -29,20 +29,42 @@ interface LiveSessionModalProps {
   onClose: () => void
 }
 
-// QR refresh interval is now per-session (from session.qrRefreshSeconds)
-const DEFAULT_QR_REFRESH = 20
+// QR refresh interval is configured per-session via Admin Settings (default 15s)
+const DEFAULT_QR_REFRESH = 15
 
 function LiveSessionModal({ session, onEnd, ending, onClose }: LiveSessionModalProps) {
   const [msLeft, setMsLeft] = useState(() => timeRemaining(session.expiryTime))
   const [qrCodeData, setQrCodeData] = useState(session.qrCodeData)
-  const qrInterval = (session as any).qrRefreshSeconds ?? DEFAULT_QR_REFRESH
-  const [qrSecondsLeft, setQrSecondsLeft] = useState(qrInterval)
+  const [socketRefreshSeconds, setSocketRefreshSeconds] = useState<number | null>(null)
+  const initialQrInterval = (session as any).qrRefreshSeconds ?? DEFAULT_QR_REFRESH
+  const [qrSecondsLeft, setQrSecondsLeft] = useState(initialQrInterval)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isProjectorMode, setIsProjectorMode] = useState(false)
   const [showRoster, setShowRoster] = useState(false)
   const [copiedField, setCopiedField] = useState<'sessionCode' | 'passwordCode' | null>(null)
   const [confirmEndOpen, setConfirmEndOpen] = useState(false)
   const [rosterSearch, setRosterSearch] = useState('')
+
+  // Live attendee count + QR sync — socket push, fall back to poll
+  const [socketPresent, setSocketPresent] = useState<number | null>(null)
+  const socket = useSocket()
+
+  const { data: liveData } = useQuery({
+    queryKey: ['live-session', session._id],
+    queryFn: () => attendanceService.getLiveSession(session._id),
+    refetchInterval: 5_000,
+    enabled: msLeft > 0,
+  })
+
+  const qrInterval: number =
+    liveData?.session?.qrRefreshSeconds ??
+    socketRefreshSeconds ??
+    (session as any).qrRefreshSeconds ??
+    DEFAULT_QR_REFRESH
+
+  useEffect(() => {
+    setQrSecondsLeft((prev: number) => (prev > qrInterval ? qrInterval : prev))
+  }, [qrInterval])
 
   // Session countdown
   useEffect(() => {
@@ -59,6 +81,9 @@ function LiveSessionModal({ session, onEnd, ending, onClose }: LiveSessionModalP
     try {
       const data = await attendanceService.refreshQR(session._id)
       setQrCodeData(data.qrCodeData)
+      if (data.qrRefreshSeconds) {
+        setSocketRefreshSeconds(data.qrRefreshSeconds)
+      }
     } catch {
       // Silently ignore — will retry next tick
     } finally {
@@ -95,26 +120,23 @@ function LiveSessionModal({ session, onEnd, ending, onClose }: LiveSessionModalP
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isProjectorMode, confirmEndOpen, onClose])
 
-  // Live attendee count — socket push, fall back to poll
-  const [socketPresent, setSocketPresent] = useState<number | null>(null)
-  const socket = useSocket()
-
   useEffect(() => {
     socket.joinSession(session._id)
-    const off = socket.onEvent('attendance:marked', (d: { totalPresent: number }) => {
+    const offMarked = socket.onEvent('attendance:marked', (d: { totalPresent: number }) => {
       setSocketPresent(d.totalPresent)
     })
-    return off
+    const offQr = socket.onEvent('qr:refreshed', (d: { qrCodeData?: string; qrRefreshSeconds?: number }) => {
+      if (d.qrCodeData) setQrCodeData(d.qrCodeData)
+      if (d.qrRefreshSeconds) setSocketRefreshSeconds(d.qrRefreshSeconds)
+      setQrSecondsLeft(d.qrRefreshSeconds || qrInterval)
+    })
+    return () => {
+      offMarked()
+      offQr()
+    }
   // socket is a stable singleton — intentionally omitted
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session._id])
-
-  const { data: liveData } = useQuery({
-    queryKey: ['live-session', session._id],
-    queryFn: () => attendanceService.getLiveSession(session._id),
-    refetchInterval: 5_000,
-    enabled: msLeft > 0,
-  })
 
   const totalPresent = socketPresent ?? liveData?.totalPresent ?? session.totalPresent
   const absentCount: number = liveData?.absentCount ?? 0
@@ -800,11 +822,9 @@ export default function TeacherSessionsPage() {
                   <SelectItem value="event">College Event</SelectItem>
                 </SelectContent>
               </Select>
-              {['seminar', 'event'].includes(sessionType) && (
-                <p className="text-xs text-rose-500 flex items-center gap-1">
-                  <Shield className="w-3 h-3" /> QR will rotate every 60s for large crowds
-                </p>
-              )}
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <Shield className="w-3 h-3" /> QR refreshes automatically per Admin Settings (15s default)
+              </p>
             </div>
 
             {/* Verification Mode */}

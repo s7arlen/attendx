@@ -18,6 +18,7 @@ import { Subject } from '../models/Subject.model';
 import { createAuditLog, getClientIp } from '../utils/auditLogger';
 import { emitToSession } from '../config/socket';
 import { getAllowedOrigins, isValidObjectId, checkGeoFence } from '../utils/security';
+import { isValidSessionQrToken } from '../utils/qrSession';
 import { Server } from 'socket.io';
 
 const RP_NAME = 'AttendX';
@@ -166,8 +167,8 @@ export const verifyAttendanceWithBiometric = async (req: AuthRequest, res: Respo
     if (!session || session.status !== 'active' || new Date() > session.expiryTime) {
       res.status(400).json({ success: false, message: 'Session is not active or has expired' }); return;
     }
-    if (session.qrToken !== secureToken) {
-      res.status(400).json({ success: false, message: 'Invalid QR code' }); return;
+    if (!isValidSessionQrToken(session, secureToken, true)) {
+      res.status(400).json({ success: false, message: 'Invalid or expired QR code' }); return;
     }
 
     const geoCheck = checkGeoFence(session.geoFence, (req.body as any)?.latitude, (req.body as any)?.longitude);

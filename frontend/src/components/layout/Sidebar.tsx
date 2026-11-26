@@ -6,7 +6,7 @@ import {
   History, ScanLine, ChevronLeft, ChevronRight, GraduationCap,
   LogOut, UserCheck, UserCircle, Shield, AlertTriangle, Building2,
   CalendarDays, UserPlus, ClipboardCheck, QrCode as QrCodeIcon,
-  BarChart2, ChevronDown, Brain, Zap, WifiOff,
+  BarChart2, ChevronDown, Brain, Zap, WifiOff, Settings,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/authStore'
@@ -30,6 +30,7 @@ const adminNavItems: NavItem[] = [
   { label: 'Reports',           icon: History,         path: '/len-admin/reports' },
   { label: 'Disputes',          icon: AlertTriangle,   path: '/len-admin/disputes' },
   { label: 'Audit Logs',        icon: Shield,          path: '/len-admin/audit-logs' },
+  { label: 'Settings',          icon: Settings,        path: '/len-admin/settings' },
   { label: 'Profile',           icon: UserCircle,      path: '/len-admin/profile' },
 ]
 

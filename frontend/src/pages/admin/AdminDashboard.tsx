@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Users, GraduationCap, BookOpen, Percent, Activity,
-  UserPlus, Download, Calendar, FileText, ArrowRight, Zap, MapPin,
+  UserPlus, Download, Calendar, FileText, ArrowRight, Zap, MapPin, Settings,
 } from 'lucide-react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
 import StatCard from '@/components/shared/StatCard'
@@ -25,6 +25,11 @@ export default function AdminDashboard() {
   const { data: analytics, isLoading: analyticsLoading, isError: analyticsError, refetch: refetchAnalytics } = useQuery({
     queryKey: ['admin-analytics'],
     queryFn: analyticsService.getAdminAnalytics,
+  })
+
+  const { data: systemSettings } = useQuery({
+    queryKey: ['admin-settings'],
+    queryFn: adminService.getSettings,
   })
 
   // Live sessions across institution
@@ -60,7 +65,13 @@ export default function AdminDashboard() {
             Institutional summary and attendance metrics
           </p>
         </div>
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <Link to="/len-admin/settings">
+            <Button size="sm" variant="outline" className="gap-1.5 text-xs h-9">
+              <Settings className="w-3.5 h-3.5" />
+              QR Refresh: {systemSettings?.qrRefreshSeconds ?? 15}s
+            </Button>
+          </Link>
           <Link to="/len-admin/students">
             <Button size="sm" variant="outline" className="gap-1.5 text-xs h-9">
               <UserPlus className="w-3.5 h-3.5" />

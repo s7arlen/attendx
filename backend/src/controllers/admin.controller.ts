@@ -7,6 +7,11 @@ import { AttendanceRecord } from '../models/AttendanceRecord.model';
 import { AttendanceSession } from '../models/AttendanceSession.model';
 import { AuditLog } from '../models/AuditLog.model';
 import { Notification } from '../models/Notification.model';
+import {
+  getSystemSettings,
+  MIN_QR_REFRESH_SECONDS,
+  MAX_QR_REFRESH_SECONDS,
+} from '../models/SystemSettings.model';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { createAuditLog, getClientIp } from '../utils/auditLogger';
 import { clampPagination, escapeRegex, isValidObjectId } from '../utils/security';
@@ -683,5 +688,84 @@ export const markNotificationsRead = async (req: AuthRequest, res: Response): Pr
     res.json({ success: true, message: 'All notifications marked as read' });
   } catch {
     res.status(500).json({ success: false, message: 'Failed to mark notifications read' });
+  }
+};
+
+// ── SYSTEM SETTINGS ──────────────────────────────────────────
+const updateSettingsSchema = z.object({
+  qrRefreshSeconds: z.coerce
+    .number()
+    .int()
+    .min(MIN_QR_REFRESH_SECONDS, `Minimum refresh interval is ${MIN_QR_REFRESH_SECONDS}s`)
+    .max(MAX_QR_REFRESH_SECONDS, `Maximum refresh interval is ${MAX_QR_REFRESH_SECONDS}s`),
+  applyToActiveSessions: z.boolean().optional().default(true),
+});
+
+export const getAdminSettings = async (_req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const settings = await getSystemSettings();
+    res.json({
+      success: true,
+      data: {
+        qrRefreshSeconds: settings.qrRefreshSeconds,
+        minQrRefreshSeconds: MIN_QR_REFRESH_SECONDS,
+        maxQrRefreshSeconds: MAX_QR_REFRESH_SECONDS,
+        updatedAt: settings.updatedAt,
+      },
+    });
+  } catch {
+    res.status(500).json({ success: false, message: 'Failed to load system settings' });
+  }
+};
+
+export const updateAdminSettings = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const parsed = updateSettingsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid settings parameters',
+        errors: parsed.error.issues,
+      });
+      return;
+    }
+
+    const { qrRefreshSeconds, applyToActiveSessions } = parsed.data;
+    const settings = await getSystemSettings();
+    settings.qrRefreshSeconds = qrRefreshSeconds;
+    settings.updatedBy = req.user!.userId as any;
+    await settings.save();
+
+    let updatedActiveSessions = 0;
+    if (applyToActiveSessions) {
+      const result = await AttendanceSession.updateMany(
+        { status: 'active' },
+        { $set: { qrRefreshSeconds } }
+      );
+      updatedActiveSessions = result.modifiedCount ?? 0;
+    }
+
+    await createAuditLog(
+      req.user!.userId,
+      'UPDATE_SETTINGS',
+      'SystemSettings',
+      settings._id.toString(),
+      { qrRefreshSeconds, applyToActiveSessions, updatedActiveSessions },
+      getClientIp(req)
+    );
+
+    res.json({
+      success: true,
+      message: 'QR refresh settings updated',
+      data: {
+        qrRefreshSeconds: settings.qrRefreshSeconds,
+        minQrRefreshSeconds: MIN_QR_REFRESH_SECONDS,
+        maxQrRefreshSeconds: MAX_QR_REFRESH_SECONDS,
+        updatedActiveSessions,
+        updatedAt: settings.updatedAt,
+      },
+    });
+  } catch {
+    res.status(500).json({ success: false, message: 'Failed to update system settings' });
   }
 };

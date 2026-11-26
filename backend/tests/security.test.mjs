@@ -5,6 +5,8 @@ import securityMod from '../dist/utils/security.js';
 import jwtMod from '../dist/utils/jwt.js';
 import faceValidatorMod from '../dist/validators/facialRecognition.validators.js';
 import authRoutesMod from '../dist/routes/auth.routes.js';
+import adminRoutesMod from '../dist/routes/admin.routes.js';
+import qrSessionMod from '../dist/utils/qrSession.js';
 
 const {
   validateSecurityEnv,
@@ -32,6 +34,13 @@ const {
   registerFaceSchema,
   verifyAttendanceWithFaceSchema,
 } = faceValidatorMod;
+
+const {
+  isValidSessionQrToken,
+  getSecondsUntilNextRefresh,
+  resolveQrRefreshSeconds,
+  QR_HANDOFF_GRACE_MS,
+} = qrSessionMod;
 
 test('validateSecurityEnv fails closed with weak or missing secrets', () => {
   const prevNodeEnv = process.env.NODE_ENV;
@@ -166,4 +175,52 @@ test('auth routes wire email verification endpoints', () => {
 
   assert.ok(paths.includes('POST /send-verification'));
   assert.ok(paths.includes('POST /verify-email'));
+});
+
+test('admin routes wire QR settings endpoints', () => {
+  const router = adminRoutesMod.default;
+  const paths = router.stack
+    .filter((layer) => layer.route)
+    .map((layer) => `${Object.keys(layer.route.methods)[0]?.toUpperCase()} ${layer.route.path}`);
+
+  assert.ok(paths.includes('GET /settings'));
+  assert.ok(paths.includes('PUT /settings'));
+});
+
+test('isValidSessionQrToken enforces strict initial scan and 45s handoff grace for verification', () => {
+  const now = 1_700_000_000_000;
+  const session = {
+    qrToken: 'new-token',
+    previousQrToken: 'old-token',
+    qrTokenRotatedAt: new Date(now - 20_000),
+  };
+
+  // Current token always passes
+  assert.equal(isValidSessionQrToken(session, 'new-token', false, now), true);
+  assert.equal(isValidSessionQrToken(session, 'new-token', true, now), true);
+
+  // Previous token rejected on initial QR scan (allowPrevious = false)
+  assert.equal(isValidSessionQrToken(session, 'old-token', false, now), false);
+
+  // Previous token accepted within grace window during in-progress biometric/face verification
+  assert.equal(isValidSessionQrToken(session, 'old-token', true, now), true);
+
+  // Previous token expired after grace window
+  assert.equal(
+    isValidSessionQrToken(session, 'old-token', true, now + QR_HANDOFF_GRACE_MS + 1000),
+    false
+  );
+  assert.equal(isValidSessionQrToken(session, 'wrong-token', true, now), false);
+});
+
+test('QR refresh defaults to 15s and computes remaining countdown', () => {
+  assert.equal(resolveQrRefreshSeconds(undefined), 15);
+  assert.equal(resolveQrRefreshSeconds(15), 15);
+  assert.equal(resolveQrRefreshSeconds(30), 30);
+
+  const now = 1_700_000_010_000;
+  assert.equal(
+    getSecondsUntilNextRefresh({ qrRefreshSeconds: 15, qrLastRefreshedAt: new Date(now - 4_000) }, now),
+    11
+  );
 });

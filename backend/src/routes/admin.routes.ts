@@ -10,6 +10,7 @@ import {
   getAuditLogs,
   getDisputes, resolveDispute,
   updateUserRoleDept,
+  getAdminSettings, updateAdminSettings,
 } from '../controllers/admin.controller';
 
 const router = Router();
@@ -59,5 +60,9 @@ router.patch('/disputes/:id', resolveDispute);
 
 // Role/Department editing
 router.patch('/users/:id/role-dept', updateUserRoleDept);
+
+// System settings
+router.get('/settings', getAdminSettings);
+router.put('/settings', updateAdminSettings);
 
 export default router;

@@ -10,6 +10,7 @@ import { Timetable } from '../models/Timetable.model';
 import { AttendanceSession } from '../models/AttendanceSession.model';
 import { Subject } from '../models/Subject.model';
 import { User } from '../models/User.model';
+import { getSystemSettings } from '../models/SystemSettings.model';
 import { generateSessionAssets } from '../utils/qrGenerator';
 import { createNotification } from '../utils/notificationHelper';
 
@@ -58,6 +59,8 @@ async function autoStartSessions() {
       .populate('subjectId')
       .populate('teacherId', 'name email');
 
+    const settings = entries.length > 0 ? await getSystemSettings() : null;
+
     for (const entry of entries) {
       const { hours: startH, minutes: startM } = parseTime(entry.startTime);
 
@@ -104,6 +107,8 @@ async function autoStartSessions() {
         expiryTime,
         status:       'active',
         duration:     durationMin,
+        qrRefreshSeconds: settings?.qrRefreshSeconds ?? 15,
+        qrLastRefreshedAt: startTime,
         autoCreated:  true,
       });
 

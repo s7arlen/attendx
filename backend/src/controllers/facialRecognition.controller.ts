@@ -11,6 +11,7 @@ import { AttendanceRecord } from '../models/AttendanceRecord.model';
 import { Subject } from '../models/Subject.model';
 import { createAuditLog, getClientIp } from '../utils/auditLogger';
 import { isValidObjectId, checkGeoFence } from '../utils/security';
+import { isValidSessionQrToken } from '../utils/qrSession';
 
 const isValidDescriptor = (value: unknown): value is number[] =>
   Array.isArray(value) &&
@@ -127,8 +128,8 @@ export const verifyAttendanceWithFace = async (req: AuthRequest, res: Response):
       return;
     }
 
-    if (session.qrToken !== secureToken) {
-      res.status(400).json({ success: false, message: 'Invalid QR code' });
+    if (!isValidSessionQrToken(session, secureToken, true)) {
+      res.status(400).json({ success: false, message: 'Invalid or expired QR code' });
       return;
     }
 

@@ -102,6 +102,14 @@ export interface DashboardStats {
   totalSessions: number;
 }
 
+export interface SystemSettings {
+  qrRefreshSeconds: number;
+  minQrRefreshSeconds?: number;
+  maxQrRefreshSeconds?: number;
+  updatedActiveSessions?: number;
+  updatedAt?: string;
+}
+
 export interface AdminAnalytics {
   overview: {
     totalStudents: number;

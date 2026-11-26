@@ -6,11 +6,21 @@ import { AttendanceSession } from '../models/AttendanceSession.model';
 import { AttendanceRecord } from '../models/AttendanceRecord.model';
 import { Subject } from '../models/Subject.model';
 import { User } from '../models/User.model';
+import {
+  getSystemSettings,
+  MIN_QR_REFRESH_SECONDS,
+  MAX_QR_REFRESH_SECONDS,
+} from '../models/SystemSettings.model';
 import { generateSessionAssets, generateFreshQR } from '../utils/qrGenerator';
 import { createAuditLog, getClientIp } from '../utils/auditLogger';
 import { emitToSession } from '../config/socket';
 import { Server } from 'socket.io';
 import { clampPagination, isValidObjectId, sanitizeCsvCell, checkGeoFence } from '../utils/security';
+import {
+  getSecondsUntilNextRefresh,
+  isValidSessionQrToken,
+  resolveQrRefreshSeconds,
+} from '../utils/qrSession';
 
 const geoFenceSchema = z.object({
   latitude: z.number().min(-90).max(90),
@@ -25,7 +35,7 @@ const startSessionSchema = z.object({
   capacity: z.coerce.number().int().min(1).max(5000).nullable().optional().default(null),
   verificationMode: z.enum(['strict', 'open', 'invite']).default('strict'),
   gracePeriodMinutes: z.coerce.number().int().min(0).max(60).default(0),
-  qrRefreshSeconds: z.coerce.number().int().min(10).max(300).optional(),
+  qrRefreshSeconds: z.coerce.number().int().min(MIN_QR_REFRESH_SECONDS).max(MAX_QR_REFRESH_SECONDS).optional(),
   title: z.string().max(150).nullable().optional().default(null),
   venue: z.string().max(150).nullable().optional().default(null),
   inviteList: z.array(z.string().max(40)).max(500).optional().default([]),
@@ -100,8 +110,8 @@ export const startSession = async (req: AuthRequest, res: Response): Promise<voi
       subject.subjectCode
     );
 
-    const defaultRefresh = ['seminar', 'event', 'workshop'].includes(sessionType) ? 60 : 20;
-    const resolvedQrRefresh = qrRefreshSeconds ?? defaultRefresh;
+    const settings = await getSystemSettings();
+    const resolvedQrRefresh = qrRefreshSeconds ?? settings.qrRefreshSeconds;
 
     const startTime = new Date();
     const expiryTime = new Date(startTime.getTime() + duration * 60 * 1000);
@@ -122,6 +132,7 @@ export const startSession = async (req: AuthRequest, res: Response): Promise<voi
       verificationMode,
       gracePeriodMinutes,
       qrRefreshSeconds: resolvedQrRefresh,
+      qrLastRefreshedAt: startTime,
       title: title || null,
       venue: venue || null,
       inviteList: inviteList.map((r) => r.trim().toUpperCase()),
@@ -196,21 +207,32 @@ export const refreshQR = async (req: AuthRequest, res: Response): Promise<void> 
       (session.subjectId as any)._id?.toString() ?? session.subjectId.toString()
     );
 
+    const now = new Date();
+    session.previousQrToken = session.qrToken;
+    session.qrTokenRotatedAt = now;
+    session.qrLastRefreshedAt = now;
     session.qrToken = secureToken;
     session.qrCodeData = qrCodeData;
     await session.save();
 
+    const refreshSeconds = resolveQrRefreshSeconds(session.qrRefreshSeconds);
     const io: Server = req.app.get('io');
     emitToSession(io, sessionId, 'qr:refreshed', {
       sessionId,
       qrCodeData,
       secureToken,
-      refreshedAt: new Date().toISOString(),
+      qrRefreshSeconds: refreshSeconds,
+      refreshedAt: now.toISOString(),
     });
 
     res.json({
       success: true,
-      data: { qrCodeData, qrToken: secureToken, refreshedAt: new Date().toISOString() },
+      data: {
+        qrCodeData,
+        qrToken: secureToken,
+        qrRefreshSeconds: refreshSeconds,
+        refreshedAt: now.toISOString(),
+      },
     });
   } catch (error: any) {
     res.status(500).json({ success: false, message: 'Failed to refresh QR' });
@@ -320,7 +342,7 @@ export const getProjectorSession = async (req: any, res: Response): Promise<void
       return;
     }
 
-    const session = await AttendanceSession.findOne({
+    let session = await AttendanceSession.findOne({
       sessionCode: sessionCode.toUpperCase(),
     }).populate('subjectId', 'subjectName subjectCode department year section');
 
@@ -328,6 +350,65 @@ export const getProjectorSession = async (req: any, res: Response): Promise<void
       res.status(404).json({ success: false, message: 'Session not found' });
       return;
     }
+
+    const refreshSeconds = resolveQrRefreshSeconds(session.qrRefreshSeconds);
+    const effectiveExpiry = new Date(
+      session.expiryTime.getTime() + session.gracePeriodMinutes * 60 * 1000
+    );
+    const now = new Date();
+    const lastRefreshedMs = session.qrLastRefreshedAt
+      ? new Date(session.qrLastRefreshedAt).getTime()
+      : new Date(session.createdAt).getTime();
+
+    if (
+      session.status === 'active' &&
+      now <= effectiveExpiry &&
+      now.getTime() - lastRefreshedMs >= refreshSeconds * 1000
+    ) {
+      const cutoff = new Date(now.getTime() - refreshSeconds * 1000);
+      const subjectIdStr = (session.subjectId as any)?._id?.toString() ?? session.subjectId.toString();
+      const { secureToken, qrCodeData } = await generateFreshQR(session._id.toString(), subjectIdStr);
+
+      const updated = await AttendanceSession.findOneAndUpdate(
+        {
+          _id: session._id,
+          status: 'active',
+          $or: [
+            { qrLastRefreshedAt: { $lte: cutoff } },
+            { qrLastRefreshedAt: null },
+          ],
+        },
+        {
+          $set: {
+            previousQrToken: session.qrToken,
+            qrTokenRotatedAt: now,
+            qrLastRefreshedAt: now,
+            qrToken: secureToken,
+            qrCodeData,
+          },
+        },
+        { new: true }
+      ).populate('subjectId', 'subjectName subjectCode department year section');
+
+      if (updated) {
+        session = updated;
+        const io: Server = req.app.get('io');
+        emitToSession(io, session._id.toString(), 'qr:refreshed', {
+          sessionId: session._id.toString(),
+          qrCodeData,
+          secureToken,
+          qrRefreshSeconds: refreshSeconds,
+          refreshedAt: now.toISOString(),
+        });
+      } else {
+        const latest = await AttendanceSession.findById(session._id)
+          .populate('subjectId', 'subjectName subjectCode department year section');
+        if (latest) session = latest;
+      }
+    }
+
+    const resolvedRefreshSeconds = resolveQrRefreshSeconds(session.qrRefreshSeconds);
+    const nextRefreshInSeconds = getSecondsUntilNextRefresh(session, Date.now());
 
     res.json({
       success: true,
@@ -343,7 +424,9 @@ export const getProjectorSession = async (req: any, res: Response): Promise<void
         startTime: session.startTime,
         expiryTime: session.expiryTime,
         gracePeriodMinutes: session.gracePeriodMinutes,
-        qrRefreshSeconds: session.qrRefreshSeconds,
+        qrRefreshSeconds: resolvedRefreshSeconds,
+        qrLastRefreshedAt: session.qrLastRefreshedAt,
+        nextRefreshInSeconds,
         totalPresent: session.totalPresent,
         capacity: session.capacity,
       },
@@ -662,7 +745,7 @@ export const validateQR = async (req: AuthRequest, res: Response): Promise<void>
       res.status(400).json({ success: false, message: 'Session is not active or has expired' });
       return;
     }
-    if (session.qrToken !== secureToken) {
+    if (!isValidSessionQrToken(session, secureToken, false)) {
       res.status(400).json({ success: false, message: 'QR code has expired — please scan the latest code' });
       return;
     }
