@@ -29,3 +29,13 @@ test('USN format regex matches institutional standard', () => {
   const usnSrc = fs.readFileSync(path.resolve('src/lib/usn.ts'), 'utf8');
   assert.match(usnSrc, /USN_REGEX/);
 });
+
+test('frontend uses Vite import.meta.env instead of browser-unsafe process.env or prod localhost sockets', () => {
+  const faceServiceSrc = fs.readFileSync(path.resolve('src/services/facialRecognition.service.ts'), 'utf8');
+  assert.doesNotMatch(faceServiceSrc, /\bprocess\.env\b/);
+  assert.match(faceServiceSrc, /import\.meta\.env\.VITE_FACE_API_URL/);
+
+  const socketSrc = fs.readFileSync(path.resolve('src/hooks/useSocket.ts'), 'utf8');
+  assert.match(socketSrc, /import\.meta\.env\.VITE_SOCKET_URL/);
+  assert.match(socketSrc, /import\.meta\.env\.PROD/);
+});

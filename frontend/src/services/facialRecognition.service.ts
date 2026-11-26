@@ -5,7 +5,7 @@
 
 import * as faceapi from 'face-api.js'
 
-const MODEL_URL = process.env.REACT_APP_FACE_API_URL || 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/models/'
+const MODEL_URL = import.meta.env.VITE_FACE_API_URL || 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/models/'
 
 // Initialize face-api models
 export const initializeFaceAPI = async () => {

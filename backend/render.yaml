@@ -4,6 +4,7 @@ services:
     runtime: node
     buildCommand: npm install && npm run build
     startCommand: npm start
+    healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
@@ -32,7 +33,11 @@ services:
       - key: RATE_LIMIT_WINDOW_MS
         value: 900000
       - key: RATE_LIMIT_MAX
-        value: 100
+        value: 2000
+      - key: TURNSTILE_SECRET_KEY
+        sync: false          # Optional Cloudflare Turnstile server secret
+      - key: FACE_SIMILARITY_THRESHOLD
+        value: 0.65
       - key: WEBAUTHN_RP_ID
         sync: false          # Your Vercel domain without https://
       - key: WEBAUTHN_ORIGIN

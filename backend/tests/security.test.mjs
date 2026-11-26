@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import securityMod from '../dist/utils/security.js';
 import jwtMod from '../dist/utils/jwt.js';
 import faceValidatorMod from '../dist/validators/facialRecognition.validators.js';
+import authRoutesMod from '../dist/routes/auth.routes.js';
 
 const {
   validateSecurityEnv,
@@ -155,4 +156,14 @@ test('facial recognition validators check 128 finite floats and optional geo bou
     }).success,
     false
   );
+});
+
+test('auth routes wire email verification endpoints', () => {
+  const router = authRoutesMod.default;
+  const paths = router.stack
+    .filter((layer) => layer.route)
+    .map((layer) => `${Object.keys(layer.route.methods)[0]?.toUpperCase()} ${layer.route.path}`);
+
+  assert.ok(paths.includes('POST /send-verification'));
+  assert.ok(paths.includes('POST /verify-email'));
 });
