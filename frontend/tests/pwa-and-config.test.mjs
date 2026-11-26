@@ -34,6 +34,11 @@ test('frontend uses Vite import.meta.env instead of browser-unsafe process.env o
   const faceServiceSrc = fs.readFileSync(path.resolve('src/services/facialRecognition.service.ts'), 'utf8');
   assert.doesNotMatch(faceServiceSrc, /\bprocess\.env\b/);
   assert.match(faceServiceSrc, /import\.meta\.env\.VITE_FACE_API_URL/);
+  assert.doesNotMatch(faceServiceSrc, /npm\/face-api\.js@0\.22\.2\/dist\/models/);
+  assert.match(faceServiceSrc, /justadudewhohacks\/face-api\.js@0\.20\.0\/weights/);
+
+  const scanQrSrc = fs.readFileSync(path.resolve('src/pages/student/ScanQRPage.tsx'), 'utf8');
+  assert.match(scanQrSrc, /setFacialRecognitionBusy\(false\)\s*[\r\n]+\s*setStep\('face'\)/);
 
   const socketSrc = fs.readFileSync(path.resolve('src/hooks/useSocket.ts'), 'utf8');
   assert.match(socketSrc, /import\.meta\.env\.VITE_SOCKET_URL/);

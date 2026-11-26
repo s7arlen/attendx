@@ -305,7 +305,7 @@ export default function ScanQRPage() {
       setStep('face-register')
       return
     }
-    setFacialRecognitionBusy(true)
+    setFacialRecognitionBusy(false)
     setStep('face')
     // The FacialRecognitionCapture component will call onSuccess with descriptor
   }
@@ -645,7 +645,10 @@ export default function ScanQRPage() {
                 <FacialRecognitionCapture
                   mode="register"
                   isLoading={facialRecognitionBusy}
-                  onCancel={() => setStep('verify-method')}
+                  onCancel={() => {
+                    setFacialRecognitionBusy(false)
+                    setStep('verify-method')
+                  }}
                   onSuccess={async (descriptor) => {
                     setFacialRecognitionBusy(true)
                     try {
@@ -669,7 +672,10 @@ export default function ScanQRPage() {
                 <FacialRecognitionCapture
                   mode="verify"
                   onSuccess={handleFaceVerified}
-                  onCancel={() => setStep('verify-method')}
+                  onCancel={() => {
+                    setFacialRecognitionBusy(false)
+                    setStep('verify-method')
+                  }}
                   isLoading={facialRecognitionBusy}
                 />
               </div>

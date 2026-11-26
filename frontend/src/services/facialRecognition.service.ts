@@ -5,21 +5,28 @@
 
 import * as faceapi from 'face-api.js'
 
-const MODEL_URL = import.meta.env.VITE_FACE_API_URL || 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/models/'
+const MODEL_URL =
+  import.meta.env.VITE_FACE_API_URL ||
+  'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.20.0/weights'
 
-// Initialize face-api models
+let initPromise: Promise<void> | null = null
+
+// Initialize face-api models (cached across openings; retries cleanly on failure)
 export const initializeFaceAPI = async () => {
-  try {
-    await Promise.all([
+  if (!initPromise) {
+    initPromise = Promise.all([
       faceapi.nets.tinyFaceDetector.load(MODEL_URL),
       faceapi.nets.faceLandmark68Net.load(MODEL_URL),
       faceapi.nets.faceRecognitionNet.load(MODEL_URL),
-      faceapi.nets.faceExpressionNet.load(MODEL_URL),
     ])
-  } catch (error) {
-    console.error('Failed to load face-api models:', error)
-    throw new Error('Facial recognition models failed to load. Please refresh the page.')
+      .then(() => undefined)
+      .catch((error) => {
+        initPromise = null
+        console.error('Failed to load face-api models:', error)
+        throw new Error('Facial recognition models failed to load. Please check your connection and try again.')
+      })
   }
+  return initPromise
 }
 
 export interface FaceDescriptor {
@@ -33,26 +40,25 @@ export interface FaceDescriptor {
  */
 export const captureFaceDescriptor = async (videoRef: HTMLVideoElement): Promise<Float32Array | null> => {
   if (!videoRef) return null
-
-  try {
-    const detections = await faceapi
-      .detectAllFaces(videoRef, new faceapi.TinyFaceDetectorOptions())
-      .withFaceLandmarks()
-      .withFaceDescriptors()
-
-    if (detections.length === 0) {
-      throw new Error('No face detected. Please ensure your face is clearly visible.')
-    }
-
-    if (detections.length > 1) {
-      throw new Error('Multiple faces detected. Please ensure only your face is in the frame.')
-    }
-
-    // Return the descriptor of the first (and only) detected face
-    return detections[0].descriptor
-  } catch (error) {
-    throw error
+  if (videoRef.readyState < 2 || videoRef.videoWidth === 0) {
+    throw new Error('Camera feed is still starting. Please wait a moment and try again.')
   }
+
+  const detections = await faceapi
+    .detectAllFaces(videoRef, new faceapi.TinyFaceDetectorOptions())
+    .withFaceLandmarks()
+    .withFaceDescriptors()
+
+  if (detections.length === 0) {
+    throw new Error('No face detected. Please ensure your face is clearly visible.')
+  }
+
+  if (detections.length > 1) {
+    throw new Error('Multiple faces detected. Please ensure only your face is in the frame.')
+  }
+
+  // Return the descriptor of the first (and only) detected face
+  return detections[0].descriptor
 }
 
 /**

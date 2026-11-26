@@ -35,41 +35,72 @@ export function FacialRecognitionCapture({
   const [capturing, setCapturing] = useState(false)
   const [status, setStatus] = useState<'ready' | 'capturing' | 'processing' | 'success' | 'error'>('ready')
   const [errorMsg, setErrorMsg] = useState('')
-  const [cameraAvailable, setCameraAvailable] = useState(true)
+  const [initErrorType, setInitErrorType] = useState<'camera' | 'models' | null>(null)
+  const [retryKey, setRetryKey] = useState(0)
   const streamRef = useRef<MediaStream | null>(null)
 
-  // Initialize face-api and camera
+  // Initialize face-api models and camera stream
   useEffect(() => {
+    let cancelled = false
+
+    const stopExistingStream = () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop())
+        streamRef.current = null
+      }
+    }
+
     const init = async () => {
+      setInitialized(false)
+      setInitErrorType(null)
+      setErrorMsg('')
+
       try {
-        // Check camera device availability (Fix #8)
-        const devices = await navigator.mediaDevices.enumerateDevices()
-        const hasCamera = devices.some(device => device.kind === 'videoinput')
-        
-        if (!hasCamera) {
-          throw new Error('No camera device found on this device')
+        await initializeFaceAPI()
+      } catch (error: any) {
+        if (cancelled) return
+        const msg = error?.message || 'Facial recognition models failed to load.'
+        setErrorMsg(msg)
+        setInitErrorType('models')
+        toast({
+          title: 'Model Load Failed',
+          description: msg,
+          variant: 'destructive',
+        })
+        return
+      }
+
+      if (cancelled) return
+
+      try {
+        if (!navigator.mediaDevices?.getUserMedia) {
+          throw new Error('Camera access is not supported in this browser or requires HTTPS.')
         }
 
-        // Initialize face-api models
-        await initializeFaceAPI()
-
-        // Request camera access
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+          audio: false,
         })
 
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream
-          streamRef.current = stream
+        if (cancelled) {
+          stream.getTracks().forEach(track => track.stop())
+          return
         }
 
+        streamRef.current = stream
         setInitialized(true)
       } catch (error: any) {
-        const msg = error.message || 'Failed to initialize facial recognition'
+        if (cancelled) return
+        const msg =
+          error?.name === 'NotAllowedError'
+            ? 'Camera permission was denied. Please allow camera access in your browser settings.'
+            : error?.name === 'NotFoundError'
+              ? 'No camera device was found on this device.'
+              : error?.message || 'Failed to access camera.'
         setErrorMsg(msg)
-        setCameraAvailable(false)
+        setInitErrorType('camera')
         toast({
-          title: 'Camera or Models Failed',
+          title: 'Camera Failed',
           description: msg,
           variant: 'destructive',
         })
@@ -79,16 +110,22 @@ export function FacialRecognitionCapture({
     init()
 
     return () => {
-      // Cleanup: stop camera stream (Fix #10)
+      cancelled = true
       try {
-        if (streamRef.current) {
-          streamRef.current.getTracks().forEach(track => track.stop())
-        }
+        stopExistingStream()
       } catch (error) {
         console.error('Error stopping video stream:', error)
       }
     }
-  }, [])
+  }, [retryKey])
+
+  // Attach acquired MediaStream once the <video> element mounts
+  useEffect(() => {
+    if (!initialized || !videoRef.current || !streamRef.current) return
+    const videoEl = videoRef.current
+    videoEl.srcObject = streamRef.current
+    videoEl.play().catch(() => {})
+  }, [initialized])
 
   const handleCapture = async () => {
     if (!videoRef.current || !initialized || capturing) return
@@ -134,7 +171,8 @@ export function FacialRecognitionCapture({
     }
   }
 
-  if (!cameraAvailable) {
+  if (initErrorType) {
+    const isCameraError = initErrorType === 'camera'
     return (
       <Card className="border-red-500/30">
         <CardContent className="py-10 flex flex-col items-center gap-4 text-center">
@@ -142,15 +180,24 @@ export function FacialRecognitionCapture({
             <AlertCircle className="w-8 h-8 text-red-500" />
           </div>
           <div>
-            <h3 className="font-semibold">Camera Not Available</h3>
+            <h3 className="font-semibold">
+              {isCameraError ? 'Camera Not Available' : 'Facial Recognition Models Failed'}
+            </h3>
             <p className="text-sm text-muted-foreground mt-1">{errorMsg}</p>
             <p className="text-xs text-muted-foreground mt-2">
-              Please grant camera permissions or try a different device
+              {isCameraError
+                ? 'Please grant camera permissions or try a different device.'
+                : 'Check your internet connection and tap Retry.'}
             </p>
           </div>
-          <Button variant="outline" onClick={onCancel}>
-            Go Back
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="gradient" onClick={() => setRetryKey((k) => k + 1)}>
+              Retry
+            </Button>
+            <Button variant="outline" onClick={onCancel}>
+              Go Back
+            </Button>
+          </div>
         </CardContent>
       </Card>
     )
@@ -177,6 +224,7 @@ export function FacialRecognitionCapture({
               ref={videoRef}
               autoPlay
               playsInline
+              muted
               className="w-full h-full object-cover"
               style={{ transform: 'scaleX(-1)' }} // Mirror the video
             />
