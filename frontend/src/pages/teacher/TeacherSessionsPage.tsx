@@ -36,8 +36,8 @@ interface LiveRecordItem {
   studentId?: { name?: string; rollNumber?: string; email?: string } | string
 }
 
-// QR refresh interval is configured per-session via Admin Settings (default 15s)
-const DEFAULT_QR_REFRESH = 15
+// QR refresh interval is configured per-session via Admin Settings (default 10s)
+const DEFAULT_QR_REFRESH = 10
 
 function LiveSessionModal({ session, onEnd, ending, onClose }: LiveSessionModalProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -54,6 +54,16 @@ function LiveSessionModal({ session, onEnd, ending, onClose }: LiveSessionModalP
   const [copiedCode, setCopiedCode] = useState(false)
   const [confirmEndOpen, setConfirmEndOpen] = useState(false)
   const [rosterSearch, setRosterSearch] = useState('')
+
+  // Monotonic wall-clock and server-offset refs (immune to timer teardown or clock skew)
+  const serverOffsetMsRef = useRef(0)
+  const lastQrRotatedAtMsRef = useRef<number>(
+    session.qrLastRefreshedAt ? new Date(session.qrLastRefreshedAt).getTime() : 0
+  )
+  const didInitialLiveSyncRef = useRef(false)
+  const nextQrRefreshAtMsRef = useRef<number>(Date.now() + initialQrInterval * 1000)
+  const qrIntervalRef = useRef(initialQrInterval)
+  const isRefreshingRef = useRef(false)
 
   // Live attendee count + QR sync — socket push, fall back to poll
   const [socketPresent, setSocketPresent] = useState<number | null>(null)
@@ -102,65 +112,141 @@ function LiveSessionModal({ session, onEnd, ending, onClose }: LiveSessionModalP
     DEFAULT_QR_REFRESH
 
   useEffect(() => {
-    setQrSecondsLeft((prev: number) => (prev > qrInterval ? qrInterval : prev))
+    qrIntervalRef.current = qrInterval
+    const cappedDeadline = Date.now() + qrInterval * 1000
+    if (nextQrRefreshAtMsRef.current > cappedDeadline) {
+      nextQrRefreshAtMsRef.current = cappedDeadline
+      setQrSecondsLeft(qrInterval)
+    }
   }, [qrInterval])
 
-  // Session countdown
+  // Sync latest QR, server time, and countdown deadline from 5s poll without overwriting newer local rotations
   useEffect(() => {
-    const tick = setInterval(() => {
-      const remaining = timeRemaining(session.expiryTime)
-      setMsLeft(remaining)
-      if (remaining <= 0) clearInterval(tick)
-    }, 1000)
-    return () => clearInterval(tick)
-  }, [session.expiryTime])
-
-  useEffect(() => {
-    if (liveData?.session?.dynamicCode) {
-      setDynamicCode(liveData.session.dynamicCode)
+    if (!liveData) return
+    if (liveData.serverNow) {
+      serverOffsetMsRef.current = new Date(liveData.serverNow).getTime() - Date.now()
     }
-  }, [liveData?.session?.dynamicCode])
+
+    const remoteSession = liveData.session
+    const remoteRotatedMs = remoteSession?.qrLastRefreshedAt
+      ? new Date(remoteSession.qrLastRefreshedAt).getTime()
+      : 0
+    const nextInSec =
+      typeof liveData.nextRefreshInSeconds === 'number' && liveData.nextRefreshInSeconds > 0
+        ? Math.min(liveData.nextRefreshInSeconds, qrInterval)
+        : qrInterval
+
+    if (remoteRotatedMs > lastQrRotatedAtMsRef.current) {
+      lastQrRotatedAtMsRef.current = remoteRotatedMs
+      if (remoteSession?.qrCodeData) setQrCodeData(remoteSession.qrCodeData)
+      if (remoteSession?.dynamicCode) setDynamicCode(remoteSession.dynamicCode)
+      nextQrRefreshAtMsRef.current = Date.now() + nextInSec * 1000
+      setQrSecondsLeft(nextInSec)
+      didInitialLiveSyncRef.current = true
+    } else if (!didInitialLiveSyncRef.current) {
+      didInitialLiveSyncRef.current = true
+      if (remoteSession?.qrCodeData) setQrCodeData(remoteSession.qrCodeData)
+      if (remoteSession?.dynamicCode) setDynamicCode(remoteSession.dynamicCode)
+      nextQrRefreshAtMsRef.current = Date.now() + nextInSec * 1000
+      setQrSecondsLeft(nextInSec)
+    }
+  }, [liveData, qrInterval])
 
   const doRefresh = useCallback(async () => {
+    if (isRefreshingRef.current) return
+    const currentRemaining = timeRemaining(session.expiryTime, Date.now() + serverOffsetMsRef.current)
+    if (currentRemaining <= 0) return
+
+    isRefreshingRef.current = true
     setIsRefreshing(true)
     try {
       const data = await attendanceService.refreshQR(session._id)
-      setQrCodeData(data.qrCodeData)
-      if (data.dynamicCode) {
-        setDynamicCode(data.dynamicCode)
+      const rotatedMs = data.refreshedAt ? new Date(data.refreshedAt).getTime() : Date.now()
+      if (rotatedMs >= lastQrRotatedAtMsRef.current) {
+        lastQrRotatedAtMsRef.current = rotatedMs
+        setQrCodeData(data.qrCodeData)
+        if (data.dynamicCode) {
+          setDynamicCode(data.dynamicCode)
+        }
       }
+      if (data.refreshedAt) {
+        serverOffsetMsRef.current = new Date(data.refreshedAt).getTime() - Date.now()
+      }
+      const nextInterval = data.qrRefreshSeconds || qrIntervalRef.current
       if (data.qrRefreshSeconds) {
         setSocketRefreshSeconds(data.qrRefreshSeconds)
+        qrIntervalRef.current = data.qrRefreshSeconds
       }
+      nextQrRefreshAtMsRef.current = Date.now() + nextInterval * 1000
+      setQrSecondsLeft(nextInterval)
     } catch {
-      // Silently ignore — will retry next tick
+      // Transient failure — retry in 2s instead of stalling
+      nextQrRefreshAtMsRef.current = Date.now() + 2_000
+      setQrSecondsLeft(2)
     } finally {
+      isRefreshingRef.current = false
       setIsRefreshing(false)
     }
-  }, [session._id])
+  }, [session._id, session.expiryTime])
 
-  // QR refresh countdown + auto-refresh
+  // Unified wall-clock countdown for session expiry and QR rotation (no changing seconds deps)
   useEffect(() => {
-    if (msLeft <= 0) return
-    const tick = setInterval(() => {
-      setQrSecondsLeft((prev: number) => {
-        if (prev <= 1) { doRefresh(); return qrInterval }
-        return prev - 1
+    const syncClocks = () => {
+      const remaining = timeRemaining(session.expiryTime, Date.now() + serverOffsetMsRef.current)
+      setMsLeft((prev) => {
+        if (prev <= 0 && remaining <= 0) return prev
+        const prevSec = Math.ceil(Math.max(0, prev) / 1000)
+        const nextSec = Math.ceil(remaining / 1000)
+        return prevSec === nextSec ? prev : remaining
       })
-    }, 1000)
-    return () => clearInterval(tick)
-  }, [msLeft, session._id, doRefresh, qrInterval])
+
+      if (remaining <= 0) return
+
+      const qrMsLeft = nextQrRefreshAtMsRef.current - Date.now()
+      if (qrMsLeft <= 0) {
+        if (!isRefreshingRef.current) {
+          void doRefresh()
+        }
+        return
+      }
+
+      const nextQrSec = Math.max(1, Math.min(qrIntervalRef.current, Math.ceil(qrMsLeft / 1000)))
+      setQrSecondsLeft((prev) => (prev === nextQrSec ? prev : nextQrSec))
+    }
+
+    syncClocks()
+    const tick = setInterval(syncClocks, 250)
+    const onVisibilityChange = () => {
+      if (!document.hidden) syncClocks()
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      clearInterval(tick)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [session.expiryTime, doRefresh])
 
   useEffect(() => {
     socket.joinSession(session._id)
     const offMarked = socket.onEvent('attendance:marked', (d: { totalPresent: number }) => {
       setSocketPresent(d.totalPresent)
     })
-    const offQr = socket.onEvent('qr:refreshed', (d: { qrCodeData?: string; dynamicCode?: string; qrRefreshSeconds?: number }) => {
+    const offQr = socket.onEvent('qr:refreshed', (d: { qrCodeData?: string; dynamicCode?: string; qrRefreshSeconds?: number; refreshedAt?: string }) => {
+      const incomingMs = d.refreshedAt ? new Date(d.refreshedAt).getTime() : Date.now()
+      if (incomingMs < lastQrRotatedAtMsRef.current) return
+      lastQrRotatedAtMsRef.current = incomingMs
       if (d.qrCodeData) setQrCodeData(d.qrCodeData)
       if (d.dynamicCode) setDynamicCode(d.dynamicCode)
-      if (d.qrRefreshSeconds) setSocketRefreshSeconds(d.qrRefreshSeconds)
-      setQrSecondsLeft(d.qrRefreshSeconds || qrInterval)
+      if (d.refreshedAt) {
+        serverOffsetMsRef.current = incomingMs - Date.now()
+      }
+      const nextInterval = d.qrRefreshSeconds || qrIntervalRef.current
+      if (d.qrRefreshSeconds) {
+        setSocketRefreshSeconds(d.qrRefreshSeconds)
+        qrIntervalRef.current = d.qrRefreshSeconds
+      }
+      nextQrRefreshAtMsRef.current = Date.now() + nextInterval * 1000
+      setQrSecondsLeft(nextInterval)
     })
     return () => {
       offMarked()
@@ -375,10 +461,10 @@ function LiveSessionModal({ session, onEnd, ending, onClose }: LiveSessionModalP
               </div>
 
               <div className="mt-2.5 flex items-center justify-between w-full max-w-[224px] text-xs text-muted-foreground tabular-nums">
-                <span>Refreshes in {qrSecondsLeft}s</span>
+                <span>{isRefreshing ? 'Refreshing…' : `Refreshes in ${qrSecondsLeft}s`}</span>
                 <button
                   type="button"
-                  onClick={() => { doRefresh(); setQrSecondsLeft(qrInterval) }}
+                  onClick={() => void doRefresh()}
                   disabled={isRefreshing || isExpired}
                   className="text-foreground/70 hover:text-foreground transition-colors disabled:opacity-40"
                 >
@@ -840,7 +926,7 @@ export default function TeacherSessionsPage() {
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground flex items-center gap-1">
-                <Shield className="w-3 h-3" /> QR refreshes automatically per Admin Settings (15s default)
+                <Shield className="w-3 h-3" /> QR refreshes automatically per Admin Settings (10s default)
               </p>
             </div>
 

@@ -77,7 +77,7 @@ const AttendanceSessionSchema = new Schema<IAttendanceSession>(
     capacity:           { type: Number, default: null },
     verificationMode:   { type: String, enum: ['strict', 'open', 'invite'], default: 'strict' },
     gracePeriodMinutes: { type: Number, default: 0 },
-    qrRefreshSeconds:   { type: Number, default: 15 },
+    qrRefreshSeconds:   { type: Number, default: 10 },
     qrLastRefreshedAt:  { type: Date, default: Date.now },
     previousQrToken:    { type: String, default: null },
     qrTokenRotatedAt:   { type: Date, default: null },

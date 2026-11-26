@@ -17,7 +17,7 @@ const MAX_SECONDS = 300
 
 export default function AdminSettingsPage() {
   const queryClient = useQueryClient()
-  const [secondsInput, setSecondsInput] = useState('15')
+  const [secondsInput, setSecondsInput] = useState('10')
   const [applyToActive, setApplyToActive] = useState(true)
 
   const { data: settings, isLoading, isError, refetch } = useQuery({
@@ -105,7 +105,7 @@ export default function AdminSettingsPage() {
               </CardDescription>
             </div>
             <Badge variant="outline" className="shrink-0 font-mono">
-              Current: {isLoading ? '…' : `${settings?.qrRefreshSeconds ?? 15}s`}
+              Current: {isLoading ? '…' : `${settings?.qrRefreshSeconds ?? 10}s`}
             </Badge>
           </div>
         </CardHeader>
@@ -129,7 +129,7 @@ export default function AdminSettingsPage() {
                           : 'bg-muted/40 text-muted-foreground border-border hover:text-foreground hover:bg-muted'
                       }`}
                     >
-                      {preset}s{preset === 15 ? ' (Default)' : ''}
+                      {preset}s{preset === 10 ? ' (Default)' : ''}
                     </button>
                   )
                 })}
@@ -194,7 +194,7 @@ export default function AdminSettingsPage() {
                 <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
                 {settings?.updatedAt
                   ? `Last updated ${new Date(settings.updatedAt).toLocaleString()}`
-                  : 'Using default 15s interval'}
+                  : 'Using default 10s interval'}
               </span>
               <Button
                 type="submit"

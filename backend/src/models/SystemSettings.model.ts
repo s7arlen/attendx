@@ -1,6 +1,6 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
-export const DEFAULT_QR_REFRESH_SECONDS = 15;
+export const DEFAULT_QR_REFRESH_SECONDS = 10;
 export const MIN_QR_REFRESH_SECONDS = 5;
 export const MAX_QR_REFRESH_SECONDS = 300;
 
@@ -31,7 +31,14 @@ export const SystemSettings = mongoose.model<ISystemSettings>('SystemSettings', 
 
 export async function getSystemSettings(): Promise<ISystemSettings> {
   const existing = await SystemSettings.findOne({ key: 'global' });
-  if (existing) return existing;
+  if (existing) {
+    // Upgrade untouched auto-seeded 15s default to 10s without overriding explicit admin saves
+    if (existing.updatedBy == null && existing.qrRefreshSeconds === 15) {
+      existing.qrRefreshSeconds = DEFAULT_QR_REFRESH_SECONDS;
+      await existing.save();
+    }
+    return existing;
+  }
 
   const created = await SystemSettings.findOneAndUpdate(
     { key: 'global' },

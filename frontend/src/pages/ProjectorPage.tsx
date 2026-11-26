@@ -11,6 +11,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { QrCode, Users, MapPin, RefreshCw, CheckCircle, XCircle } from 'lucide-react'
 import api from '@/lib/axios'
+import { formatTimeRemaining } from '@/lib/utils'
 
 interface ProjectorData {
   sessionCode: string
@@ -28,16 +29,9 @@ interface ProjectorData {
   qrRefreshSeconds: number
   qrLastRefreshedAt?: string
   nextRefreshInSeconds?: number
+  serverNow?: string
   totalPresent: number
   capacity: number | null
-}
-
-function formatCountdown(ms: number): string {
-  if (ms <= 0) return '00:00'
-  const totalSec = Math.floor(ms / 1000)
-  const m = Math.floor(totalSec / 60)
-  const s = totalSec % 60
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
 const SESSION_TYPE_LABEL: Record<string, string> = {
@@ -55,35 +49,48 @@ export default function ProjectorPage() {
   const [data, setData] = useState<ProjectorData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [msLeft, setMsLeft] = useState(0)
-  const [qrCountdown, setQrCountdown] = useState(15)
+  const [qrCountdown, setQrCountdown] = useState(10)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const fetchingRef = useRef(false)
+  const serverOffsetMsRef = useRef(0)
+  const effectiveExpiryMsRef = useRef(0)
+  const refreshIntervalRef = useRef(10)
+  const nextRefreshAtMsRef = useRef(Date.now() + 10_000)
 
   const fetchSession = useCallback(async () => {
     if (!sessionCode || fetchingRef.current) return
     fetchingRef.current = true
+    setRefreshing(true)
     try {
       const res = await api.get(`/attendance/projector/${sessionCode}`, {
         params: projectorKey ? { key: projectorKey } : undefined,
       })
       const d: ProjectorData = res.data.data
-      const refreshSeconds = d.qrRefreshSeconds || 15
+      const refreshSeconds = d.qrRefreshSeconds || 10
       const nextCountdown =
         d.nextRefreshInSeconds && d.nextRefreshInSeconds > 0
           ? Math.min(d.nextRefreshInSeconds, refreshSeconds)
           : refreshSeconds
 
+      if (d.serverNow) {
+        serverOffsetMsRef.current = new Date(d.serverNow).getTime() - Date.now()
+      }
+      const effectiveExpiry = new Date(d.expiryTime).getTime() + d.gracePeriodMinutes * 60 * 1000
+      effectiveExpiryMsRef.current = effectiveExpiry
+      refreshIntervalRef.current = refreshSeconds
+      nextRefreshAtMsRef.current = Date.now() + nextCountdown * 1000 + 150
+
       setData(d)
       setError(null)
       setQrCountdown(nextCountdown)
-
-      const effectiveExpiry = new Date(d.expiryTime).getTime() + d.gracePeriodMinutes * 60 * 1000
-      setMsLeft(Math.max(0, effectiveExpiry - Date.now()))
+      setMsLeft(Math.max(0, effectiveExpiry - (Date.now() + serverOffsetMsRef.current)))
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } } }
       setError(err.response?.data?.message || 'Session not found')
     } finally {
       fetchingRef.current = false
+      setRefreshing(false)
       setLoading(false)
     }
   }, [sessionCode, projectorKey])
@@ -93,39 +100,42 @@ export default function ProjectorPage() {
     fetchSession()
   }, [fetchSession])
 
-  // Countdown timer & QR refresh counter (paused while tab is hidden)
-  useEffect(() => {
-    if (!data) return
-    const tick = setInterval(() => {
-      if (document.hidden) return
-      const effectiveExpiry = new Date(data.expiryTime).getTime() + data.gracePeriodMinutes * 60 * 1000
-      setMsLeft(Math.max(0, effectiveExpiry - Date.now()))
-    }, 1000)
-    return () => clearInterval(tick)
-  }, [data])
-
-  // QR refresh counter + re-fetch (resumes immediately when tab returns visible)
+  // Unified wall-clock countdown & QR refresh poll (resumes cleanly when tab becomes visible)
   const hasData = !!data
-  const dataQrRefresh = data?.qrRefreshSeconds
   const dataStatus = data?.status
   useEffect(() => {
     if (!hasData || dataStatus === 'ended' || dataStatus === 'expired') return
-    const refreshInterval = dataQrRefresh || 15
 
-    const tick = setInterval(() => {
+    const syncClocks = () => {
       if (document.hidden) return
-      setQrCountdown(prev => {
-        if (prev <= 1) {
-          fetchSession()
-          return refreshInterval
-        }
-        return prev - 1
+      const remaining = Math.max(0, effectiveExpiryMsRef.current - (Date.now() + serverOffsetMsRef.current))
+      setMsLeft((prev) => {
+        if (prev <= 0 && remaining <= 0) return prev
+        const prevSec = Math.ceil(Math.max(0, prev) / 1000)
+        const nextSec = Math.ceil(remaining / 1000)
+        return prevSec === nextSec ? prev : remaining
       })
-    }, 1000)
+
+      if (remaining <= 0) return
+
+      const qrMsLeft = nextRefreshAtMsRef.current - Date.now()
+      if (qrMsLeft <= 0) {
+        if (!fetchingRef.current) {
+          void fetchSession()
+        }
+        return
+      }
+
+      const nextQrSec = Math.max(1, Math.min(refreshIntervalRef.current, Math.ceil(qrMsLeft / 1000)))
+      setQrCountdown((prev) => (prev === nextQrSec ? prev : nextQrSec))
+    }
+
+    syncClocks()
+    const tick = setInterval(syncClocks, 250)
 
     const onVisibilityChange = () => {
       if (!document.hidden) {
-        fetchSession()
+        void fetchSession()
       }
     }
     document.addEventListener('visibilitychange', onVisibilityChange)
@@ -134,7 +144,7 @@ export default function ProjectorPage() {
       clearInterval(tick)
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
-  }, [hasData, dataQrRefresh, dataStatus, fetchSession])
+  }, [hasData, dataStatus, fetchSession])
 
   // Page title
   useEffect(() => {
@@ -197,7 +207,7 @@ export default function ProjectorPage() {
           <div className={`text-4xl sm:text-5xl font-semibold tracking-tight tabular-nums ${
             msLeft < 60_000 ? 'text-destructive' : 'text-foreground'
           }`}>
-            {formatCountdown(msLeft)}
+            {formatTimeRemaining(msLeft)}
           </div>
           <p className="text-xs text-muted-foreground mt-1">Remaining</p>
         </div>
@@ -222,7 +232,7 @@ export default function ProjectorPage() {
             )}
           </div>
           <p className="text-xs text-muted-foreground tabular-nums">
-            Refreshes in {qrCountdown}s
+            {refreshing ? 'Refreshing…' : `Refreshes in ${qrCountdown}s`}
           </p>
         </div>
 
@@ -234,7 +244,7 @@ export default function ProjectorPage() {
               {data.dynamicCode || '------'}
             </p>
             <p className="text-xs text-muted-foreground mt-1.5 tabular-nums">
-              Rotates every {data.qrRefreshSeconds || 15}s
+              Rotates every {data.qrRefreshSeconds || 10}s
             </p>
           </div>
 

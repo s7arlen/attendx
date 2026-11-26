@@ -76,6 +76,7 @@ export interface AttendanceSession {
   capacity: number | null;
   gracePeriodMinutes: number;
   qrRefreshSeconds: number;
+  qrLastRefreshedAt?: string;
   venue: string | null;
   title: string | null;
   inviteList: string[];

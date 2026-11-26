@@ -1,14 +1,13 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useId, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Bell, Sun, Moon, Menu, CheckCheck, Info, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-
 import { useThemeStore } from '@/store/themeStore'
 import { useAuthStore } from '@/store/authStore'
-import { generateAvatarUrl, formatDate } from '@/lib/utils'
+import { generateAvatarUrl, formatRelative, cn } from '@/lib/utils'
 import { motion } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { notificationService, AppNotification } from '@/services/notification.service'
-import { cn } from '@/lib/utils'
 
 interface NavbarProps {
   onMenuToggle: () => void
@@ -16,18 +15,30 @@ interface NavbarProps {
 }
 
 const notifIcon = (type: AppNotification['type']) => {
-  if (type === 'success') return <CheckCircle2 className="w-4 h-4 text-emerald-500" aria-hidden="true" />
-  if (type === 'warning') return <AlertTriangle className="w-4 h-4 text-amber-500" aria-hidden="true" />
+  if (type === 'success') return <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+  if (type === 'warning') return <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" aria-hidden="true" />
   if (type === 'error')   return <XCircle className="w-4 h-4 text-destructive" aria-hidden="true" />
-  return <Info className="w-4 h-4 text-primary" aria-hidden="true" />
+  return <Info className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
 }
 
+const supportsNativePopover = () =>
+  typeof HTMLElement !== 'undefined' &&
+  Object.prototype.hasOwnProperty.call(HTMLElement.prototype, 'popover')
+
+const supportsAnchorPositioning = () =>
+  typeof CSS !== 'undefined' &&
+  CSS.supports('anchor-name: --notif-trigger') &&
+  CSS.supports('position-area: block-end')
+
 export default function Navbar({ onMenuToggle, title }: NavbarProps) {
-  const { theme, toggleTheme }  = useThemeStore()
-  const { user }                = useAuthStore()
-  const queryClient             = useQueryClient()
-  const [notifOpen, setNotifOpen] = useState(false)
+  const { theme, toggleTheme } = useThemeStore()
+  const { user } = useAuthStore()
+  const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const popoverId = useId()
+  const triggerRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
+  const [notifOpen, setNotifOpen] = useState(false)
 
   const { data: notifData } = useQuery({
     queryKey: ['notifications'],
@@ -43,23 +54,81 @@ export default function Navbar({ onMenuToggle, title }: NavbarProps) {
   const unread = notifData?.unread ?? 0
   const notifications = notifData?.notifications ?? []
 
-  // Close panel on outside click
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
-        setNotifOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+  // Fallback anchor coordinates for browsers with Popover API but without CSS Anchor Positioning
+  const syncFallbackCoordinates = useCallback(() => {
+    const trigger = triggerRef.current
+    const panel = panelRef.current
+    if (!trigger || !panel || supportsAnchorPositioning()) return
+
+    const rect = trigger.getBoundingClientRect()
+    const rightOffset = Math.max(12, window.innerWidth - rect.right)
+    const topOffset = Math.min(rect.bottom + 8, window.innerHeight - 120)
+    panel.style.top = `${topOffset}px`
+    panel.style.right = `${rightOffset}px`
   }, [])
 
-  const handleOpenNotif = () => {
-    setNotifOpen(o => {
-      if (!o && unread > 0) markReadMutation.mutate()
-      return !o
-    })
+  // Wire native Popover events (beforetoggle positioning + toggle state sync) and non-popover fallback
+  useEffect(() => {
+    const panel = panelRef.current
+    if (!panel) return
+
+    if (!supportsNativePopover()) {
+      const onPointerDown = (e: MouseEvent) => {
+        const target = e.target as Node
+        if (panelRef.current?.contains(target) || triggerRef.current?.contains(target)) return
+        setNotifOpen(false)
+      }
+      document.addEventListener('mousedown', onPointerDown)
+      return () => document.removeEventListener('mousedown', onPointerDown)
+    }
+
+    const onBeforeToggle = (e: Event) => {
+      const toggleEvent = e as ToggleEvent
+      if (toggleEvent.newState === 'open') {
+        syncFallbackCoordinates()
+      }
+    }
+    const onToggle = (e: Event) => {
+      const toggleEvent = e as ToggleEvent
+      setNotifOpen(toggleEvent.newState === 'open')
+    }
+    const onResize = () => {
+      if (panel.matches(':popover-open')) {
+        syncFallbackCoordinates()
+      }
+    }
+
+    panel.addEventListener('beforetoggle', onBeforeToggle)
+    panel.addEventListener('toggle', onToggle)
+    window.addEventListener('resize', onResize)
+    return () => {
+      panel.removeEventListener('beforetoggle', onBeforeToggle)
+      panel.removeEventListener('toggle', onToggle)
+      window.removeEventListener('resize', onResize)
+    }
+  }, [syncFallbackCoordinates])
+
+  const closeNotifications = () => {
+    const panel = panelRef.current as (HTMLDivElement & { hidePopover?: () => void }) | null
+    if (panel?.hidePopover) {
+      try {
+        panel.hidePopover()
+      } catch {
+        setNotifOpen(false)
+      }
+    } else {
+      setNotifOpen(false)
+    }
   }
+
+  const handleNotificationClick = (item: AppNotification) => {
+    closeNotifications()
+    if (item.link && item.link.startsWith('/')) {
+      navigate(item.link)
+    }
+  }
+
+  const hasPopoverSupport = supportsNativePopover()
 
   return (
     <header className="h-16 bg-white/75 dark:bg-[#130C1C]/75 backdrop-blur-xl border-b border-white/60 dark:border-white/[0.08] flex items-center justify-between px-4 md:px-6 flex-shrink-0 z-30 transition-all shadow-sm shadow-black/[0.02]">
@@ -92,58 +161,127 @@ export default function Navbar({ onMenuToggle, title }: NavbarProps) {
           )}
         </Button>
 
-        {/* Notifications Panel */}
-        <div className="relative" ref={panelRef}>
+        {/* Notifications trigger & top-layer popover */}
+        <div className="relative">
           <Button
-            variant="glass"
+            ref={triggerRef}
+            type="button"
+            variant="ghost"
             size="icon"
             aria-label={`Notifications${unread > 0 ? `, ${unread} unread` : ''}`}
-            className="rounded-xl w-9 h-9 relative border border-border/80"
-            onClick={handleOpenNotif}
+            aria-expanded={notifOpen}
+            className="notif-trigger rounded-xl w-9 h-9 relative border border-border/80 bg-background/60 hover:bg-muted/80 focus-visible:ring-foreground/50 focus-visible:ring-offset-0"
+            {...(hasPopoverSupport
+              ? ({ popovertarget: popoverId } as Record<string, unknown>)
+              : {
+                  onClick: () => {
+                    syncFallbackCoordinates()
+                    setNotifOpen((o) => !o)
+                  },
+                })}
           >
             <Bell className="w-4 h-4 text-foreground/80" />
             {unread > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] gradient-sunset rounded-full
-                ring-2 ring-background flex items-center justify-center text-[9px] text-white font-bold leading-none px-1 shadow-sm shadow-rose-950/40 animate-pulse">
+              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 bg-primary text-primary-foreground rounded-full
+                ring-2 ring-background flex items-center justify-center text-[10px] font-semibold leading-none px-1 tabular-nums">
                 {unread > 9 ? '9+' : unread}
               </span>
             )}
           </Button>
 
-          {/* Notification dropdown panel */}
-          {notifOpen && (
-            <div className="absolute right-0 top-11 w-84 bg-white/90 dark:bg-[#181024]/95 backdrop-blur-2xl border border-white/60 dark:border-white/[0.09] rounded-2xl shadow-2xl shadow-black/20 dark:shadow-black/50 z-50 overflow-hidden animate-fade-in">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-border/60 bg-muted/30">
-                <p className="text-sm font-bold text-foreground">Notifications</p>
+          <div
+            ref={panelRef}
+            id={popoverId}
+            {...(hasPopoverSupport ? ({ popover: 'auto' } as Record<string, unknown>) : {})}
+            className={cn(
+              'notif-popover w-[min(23rem,calc(100vw-1.5rem))] bg-popover text-popover-foreground border border-border/80 rounded-xl shadow-xl overflow-hidden',
+              !hasPopoverSupport && (notifOpen ? 'fixed z-50 block' : 'hidden')
+            )}
+          >
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border/60">
+              <div className="flex items-baseline gap-2 min-w-0">
+                <p className="text-sm font-semibold tracking-tight text-foreground">Notifications</p>
                 {unread > 0 && (
-                  <button onClick={() => markReadMutation.mutate()}
-                    className="text-xs text-primary hover:underline flex items-center gap-1 font-medium">
-                    <CheckCheck className="w-3.5 h-3.5" aria-hidden="true" />
-                    Mark all read
-                  </button>
+                  <span className="text-xs text-muted-foreground tabular-nums">{unread} unread</span>
                 )}
               </div>
-              <div className="max-h-80 overflow-y-auto divide-y divide-border/40">
-                {notifications.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-8">No notifications</p>
-                ) : (
-                  notifications.map((n: AppNotification) => (
-                    <div key={n._id}
-                      className={cn('flex items-start gap-3 px-4 py-3 hover:bg-rose-500/[0.06] transition-colors',
-                        !n.read && 'bg-rose-500/[0.04]')}>
-                      <div className="mt-0.5 flex-shrink-0">{notifIcon(n.type)}</div>
-                      <div className="flex-1 min-w-0">
-                        <p className={cn('text-sm', !n.read ? 'font-semibold text-foreground' : 'text-foreground/80')}>{n.title}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{n.message}</p>
-                        <p className="text-[11px] text-muted-foreground/70 mt-1">{formatDate(n.createdAt)}</p>
-                      </div>
-                      {!n.read && <span className="w-2 h-2 rounded-full gradient-sunset flex-shrink-0 mt-1.5" aria-hidden="true" />}
-                    </div>
-                  ))
-                )}
-              </div>
+              {unread > 0 && (
+                <button
+                  type="button"
+                  onClick={() => markReadMutation.mutate()}
+                  disabled={markReadMutation.isPending}
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 whitespace-nowrap shrink-0 disabled:opacity-50"
+                >
+                  <CheckCheck className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span>Mark all read</span>
+                </button>
+              )}
             </div>
-          )}
+
+            <div className="max-h-[min(22rem,calc(100dvh-7rem))] overflow-y-auto divide-y divide-border/50">
+              {notifications.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-10">No notifications yet</p>
+              ) : (
+                notifications.map((n: AppNotification) => {
+                  const rowContent = (
+                    <>
+                      <div className="mt-0.5 shrink-0">{notifIcon(n.type)}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <p className={cn(
+                            'text-[13px] leading-snug truncate',
+                            !n.read ? 'font-semibold text-foreground' : 'font-medium text-foreground/85'
+                          )}>
+                            {n.title}
+                          </p>
+                          <span
+                            className="text-[11px] text-muted-foreground tabular-nums shrink-0"
+                            title={new Date(n.createdAt).toLocaleString()}
+                          >
+                            {formatRelative(n.createdAt)}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2 leading-relaxed">
+                          {n.message}
+                        </p>
+                      </div>
+                      {!n.read && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0 mt-2" aria-hidden="true" />
+                      )}
+                    </>
+                  )
+
+                  if (n.link && n.link.startsWith('/')) {
+                    return (
+                      <button
+                        key={n._id}
+                        type="button"
+                        onClick={() => handleNotificationClick(n)}
+                        className={cn(
+                          'w-full text-left flex items-start gap-3 px-4 py-3 transition-colors hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-foreground/50 focus-visible:-outline-offset-2',
+                          !n.read && 'bg-muted/30'
+                        )}
+                      >
+                        {rowContent}
+                      </button>
+                    )
+                  }
+
+                  return (
+                    <div
+                      key={n._id}
+                      className={cn(
+                        'flex items-start gap-3 px-4 py-3 transition-colors hover:bg-muted/40',
+                        !n.read && 'bg-muted/30'
+                      )}
+                    >
+                      {rowContent}
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          </div>
         </div>
 
         {/* User Avatar & Role Badge */}

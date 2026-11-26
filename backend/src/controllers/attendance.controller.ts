@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { Server } from 'socket.io';
 import { AuthRequest } from '../middleware/auth.middleware';
-import { AttendanceSession } from '../models/AttendanceSession.model';
+import { AttendanceSession, IAttendanceSession } from '../models/AttendanceSession.model';
 import { AttendanceRecord } from '../models/AttendanceRecord.model';
 import { Subject } from '../models/Subject.model';
 import { User } from '../models/User.model';
@@ -76,6 +76,87 @@ function buildSessionAccessFilter(sessionId: string, req: AuthRequest) {
       { coHosts: req.user!.userId },
     ],
   };
+}
+
+/**
+ * Atomically rotates the active session QR token + dynamic classroom code when the
+ * configured refresh interval has elapsed, and emits `qr:refreshed` via Socket.IO.
+ */
+async function rotateSessionQrIfDue<T extends IAttendanceSession>(
+  req: Request,
+  session: T,
+  earlyLeewayMs = 500
+): Promise<T> {
+  const refreshSeconds = resolveQrRefreshSeconds(session.qrRefreshSeconds);
+  const effectiveExpiry = new Date(
+    session.expiryTime.getTime() + (session.gracePeriodMinutes || 0) * 60 * 1000
+  );
+  const now = new Date();
+  const lastRefreshedMs = session.qrLastRefreshedAt
+    ? new Date(session.qrLastRefreshedAt).getTime()
+    : new Date(session.createdAt).getTime();
+
+  if (
+    session.status !== 'active' ||
+    now > effectiveExpiry ||
+    now.getTime() - lastRefreshedMs < refreshSeconds * 1000 - earlyLeewayMs
+  ) {
+    return session;
+  }
+
+  const cutoff = new Date(now.getTime() - refreshSeconds * 1000 + earlyLeewayMs);
+  const subjectIdStr = (session.subjectId as any)?._id?.toString() ?? session.subjectId.toString();
+  const { secureToken, dynamicCode, qrCodeData } = await generateFreshQR(session._id.toString(), subjectIdStr);
+
+  const updated = await AttendanceSession.findOneAndUpdate(
+    {
+      _id: session._id,
+      status: 'active',
+      $or: [
+        { qrLastRefreshedAt: { $lte: cutoff } },
+        { qrLastRefreshedAt: null },
+      ],
+    },
+    {
+      $set: {
+        previousQrToken: session.qrToken,
+        previousDynamicCode: session.dynamicCode,
+        qrTokenRotatedAt: now,
+        qrLastRefreshedAt: now,
+        qrToken: secureToken,
+        dynamicCode,
+        qrCodeData,
+      },
+      $push: {
+        issuedTokenHashes: {
+          $each: [{ hash: hashSha256(secureToken), issuedAt: now }],
+          $slice: -120,
+        },
+      },
+    },
+    { new: true }
+  )
+    .select('-issuedTokenHashes')
+    .populate('subjectId', 'subjectName subjectCode department year section');
+
+  if (updated) {
+    const io: Server = req.app.get('io');
+    if (io) {
+      emitToSession(io, session._id.toString(), 'qr:refreshed', {
+        sessionId: session._id.toString(),
+        qrCodeData,
+        dynamicCode,
+        qrRefreshSeconds: refreshSeconds,
+        refreshedAt: now.toISOString(),
+      });
+    }
+    return updated as unknown as T;
+  }
+
+  const latest = await AttendanceSession.findById(session._id)
+    .select('-issuedTokenHashes')
+    .populate('subjectId', 'subjectName subjectCode department year section');
+  return (latest as unknown as T) || session;
 }
 
 async function isAuthorizedForProjector(req: Request, projectorSecret?: string | null): Promise<boolean> {
@@ -214,7 +295,11 @@ export const startSession = async (req: AuthRequest, res: Response): Promise<voi
       ));
     } catch { /* non-blocking */ }
 
-    res.status(201).json({ success: true, message: 'Session started', data: { session: populated } });
+    res.status(201).json({
+      success: true,
+      message: 'Session started',
+      data: { session: populated, serverNow: startTime.toISOString() },
+    });
   } catch (error: any) {
     res.status(500).json({ success: false, message: 'Failed to start session' });
   }
@@ -356,7 +441,7 @@ export const getLiveSession = async (req: AuthRequest, res: Response): Promise<v
       return;
     }
 
-    const session = await AttendanceSession.findOne(buildSessionAccessFilter(sessionId, req))
+    let session = await AttendanceSession.findOne(buildSessionAccessFilter(sessionId, req))
       .select('-issuedTokenHashes')
       .populate('subjectId', 'subjectName subjectCode department year section');
 
@@ -364,6 +449,8 @@ export const getLiveSession = async (req: AuthRequest, res: Response): Promise<v
       res.status(404).json({ success: false, message: 'Session not found' });
       return;
     }
+
+    session = await rotateSessionQrIfDue(req, session, 500);
 
     const attendanceRecords = await AttendanceRecord.find({
       sessionId,
@@ -387,6 +474,7 @@ export const getLiveSession = async (req: AuthRequest, res: Response): Promise<v
       absentStudents = enrolled.filter(s => !presentIds.has(s._id.toString()));
     }
 
+    const nowMs = Date.now();
     res.json({
       success: true,
       data: {
@@ -395,6 +483,8 @@ export const getLiveSession = async (req: AuthRequest, res: Response): Promise<v
         totalPresent: attendanceRecords.length,
         absentStudents,
         absentCount: absentStudents.length,
+        serverNow: new Date(nowMs).toISOString(),
+        nextRefreshInSeconds: getSecondsUntilNextRefresh(session, nowMs),
       },
     });
   } catch (error: any) {
@@ -429,74 +519,11 @@ export const getProjectorSession = async (req: Request, res: Response): Promise<
       return;
     }
 
-    const refreshSeconds = resolveQrRefreshSeconds(session.qrRefreshSeconds);
-    const effectiveExpiry = new Date(
-      session.expiryTime.getTime() + session.gracePeriodMinutes * 60 * 1000
-    );
-    const now = new Date();
-    const lastRefreshedMs = session.qrLastRefreshedAt
-      ? new Date(session.qrLastRefreshedAt).getTime()
-      : new Date(session.createdAt).getTime();
+    session = await rotateSessionQrIfDue(req, session, 500);
 
-    if (
-      session.status === 'active' &&
-      now <= effectiveExpiry &&
-      now.getTime() - lastRefreshedMs >= refreshSeconds * 1000
-    ) {
-      const cutoff = new Date(now.getTime() - refreshSeconds * 1000);
-      const subjectIdStr = (session.subjectId as any)?._id?.toString() ?? session.subjectId.toString();
-      const { secureToken, dynamicCode, qrCodeData } = await generateFreshQR(session._id.toString(), subjectIdStr);
-
-      const updated = await AttendanceSession.findOneAndUpdate(
-        {
-          _id: session._id,
-          status: 'active',
-          $or: [
-            { qrLastRefreshedAt: { $lte: cutoff } },
-            { qrLastRefreshedAt: null },
-          ],
-        },
-        {
-          $set: {
-            previousQrToken: session.qrToken,
-            previousDynamicCode: session.dynamicCode,
-            qrTokenRotatedAt: now,
-            qrLastRefreshedAt: now,
-            qrToken: secureToken,
-            dynamicCode,
-            qrCodeData,
-          },
-          $push: {
-            issuedTokenHashes: {
-              $each: [{ hash: hashSha256(secureToken), issuedAt: now }],
-              $slice: -120,
-            },
-          },
-        },
-        { new: true }
-      ).populate('subjectId', 'subjectName subjectCode department year section');
-
-      if (updated) {
-        session = updated;
-        const io: Server = req.app.get('io');
-        if (io) {
-          emitToSession(io, session._id.toString(), 'qr:refreshed', {
-            sessionId: session._id.toString(),
-            qrCodeData,
-            dynamicCode,
-            qrRefreshSeconds: refreshSeconds,
-            refreshedAt: now.toISOString(),
-          });
-        }
-      } else {
-        const latest = await AttendanceSession.findById(session._id)
-          .populate('subjectId', 'subjectName subjectCode department year section');
-        if (latest) session = latest;
-      }
-    }
-
+    const nowMs = Date.now();
     const resolvedRefreshSeconds = resolveQrRefreshSeconds(session.qrRefreshSeconds);
-    const nextRefreshInSeconds = getSecondsUntilNextRefresh(session, Date.now());
+    const nextRefreshInSeconds = getSecondsUntilNextRefresh(session, nowMs);
 
     res.json({
       success: true,
@@ -516,6 +543,7 @@ export const getProjectorSession = async (req: Request, res: Response): Promise<
         qrRefreshSeconds: resolvedRefreshSeconds,
         qrLastRefreshedAt: session.qrLastRefreshedAt,
         nextRefreshInSeconds,
+        serverNow: new Date(nowMs).toISOString(),
         totalPresent: session.totalPresent,
         capacity: session.capacity,
       },

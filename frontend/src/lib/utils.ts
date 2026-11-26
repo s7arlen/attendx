@@ -66,13 +66,14 @@ export function downloadCSV<T extends Record<string, CsvValue>>(data: T[], filen
   URL.revokeObjectURL(url);
 }
 
-export function timeRemaining(expiryTime: string): number {
-  return Math.max(0, new Date(expiryTime).getTime() - Date.now());
+export function timeRemaining(expiryTime: string, nowMs = Date.now()): number {
+  return Math.max(0, new Date(expiryTime).getTime() - nowMs);
 }
 
 export function formatTimeRemaining(ms: number): string {
-  const totalSeconds = Math.floor(ms / 1000);
+  if (ms <= 0) return '00:00';
+  const totalSeconds = Math.ceil(ms / 1000);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }

@@ -235,15 +235,15 @@ test('isValidSessionQrToken enforces strict initial scan and 45s handoff grace f
   assert.equal(isValidSessionQrToken(session, 'wrong-token', true, now), false);
 });
 
-test('QR refresh defaults to 15s and computes remaining countdown', () => {
-  assert.equal(resolveQrRefreshSeconds(undefined), 15);
-  assert.equal(resolveQrRefreshSeconds(15), 15);
+test('QR refresh defaults to 10s and computes remaining countdown', () => {
+  assert.equal(resolveQrRefreshSeconds(undefined), 10);
+  assert.equal(resolveQrRefreshSeconds(10), 10);
   assert.equal(resolveQrRefreshSeconds(30), 30);
 
   const now = 1_700_000_010_000;
   assert.equal(
-    getSecondsUntilNextRefresh({ qrRefreshSeconds: 15, qrLastRefreshedAt: new Date(now - 4_000) }, now),
-    11
+    getSecondsUntilNextRefresh({ qrRefreshSeconds: 10, qrLastRefreshedAt: new Date(now - 4_000) }, now),
+    6
   );
 });
 
