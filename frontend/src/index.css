@@ -208,3 +208,14 @@
 .count-up {
   animation: countUp 0.5s ease-out forwards;
 }
+
+/* Native modal dialog scroll containment & backdrop */
+dialog:modal {
+  overscroll-behavior: contain;
+}
+dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background: rgba(9, 9, 11, 0.55);
+  backdrop-filter: blur(3px);
+}

@@ -6,6 +6,12 @@ export const attendanceService = {
   startSession: async (data: {
     subjectId: string;
     duration?: number;
+    sessionType?: string;
+    verificationMode?: string;
+    capacity?: number | null;
+    gracePeriodMinutes?: number;
+    venue?: string | null;
+    inviteList?: string[];
     geoFence?: { latitude: number; longitude: number; radiusMeters: number } | null;
   }) => {
     const res = await api.post('/attendance/start-session', data);

@@ -178,11 +178,11 @@ export default function ProjectorPage() {
     <div className="min-h-screen bg-background text-foreground flex flex-col select-none overflow-hidden">
 
       {/* Header bar */}
-      <div className="flex items-center justify-between px-8 py-5 border-b border-border/60 bg-card/50">
+      <header className="flex items-center justify-between px-8 py-5 border-b border-border/60">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold leading-tight">{displayName}</h1>
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight leading-tight [text-wrap:balance]">{displayName}</h1>
           <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground flex-wrap">
-            <span className="font-mono font-semibold text-foreground">{data.subjectCode}</span>
+            <span className="font-mono font-medium text-foreground">{data.subjectCode}</span>
             <span>·</span>
             <span>{SESSION_TYPE_LABEL[data.sessionType] || data.sessionType}</span>
             {data.venue && (
@@ -194,21 +194,21 @@ export default function ProjectorPage() {
           </div>
         </div>
         <div className="text-right">
-          <div className={`text-5xl font-mono font-bold tracking-tight ${
-            msLeft < 60_000 ? 'text-destructive' : msLeft < 300_000 ? 'text-amber-500' : 'text-foreground'
+          <div className={`text-4xl sm:text-5xl font-semibold tracking-tight tabular-nums ${
+            msLeft < 60_000 ? 'text-destructive' : 'text-foreground'
           }`}>
             {formatCountdown(msLeft)}
           </div>
-          <p className="text-xs text-muted-foreground mt-1">Time remaining</p>
+          <p className="text-xs text-muted-foreground mt-1">Remaining</p>
         </div>
-      </div>
+      </header>
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col lg:flex-row items-center justify-center gap-12 xl:gap-20 p-8 sm:p-12">
+      <main className="flex-1 flex flex-col lg:flex-row items-center justify-center gap-14 xl:gap-20 p-8 sm:p-12">
 
         {/* QR Code */}
-        <div className="flex flex-col items-center gap-4">
-          <div className="relative bg-white p-5 rounded-3xl shadow-2xl border border-border">
+        <div className="flex flex-col items-center gap-3">
+          <div className="bg-white p-4 rounded-xl border border-border">
             {data.qrCodeData ? (
               <img
                 src={data.qrCodeData}
@@ -220,66 +220,52 @@ export default function ProjectorPage() {
                 <QrCode className="w-24 h-24 text-muted-foreground/30 animate-pulse" />
               </div>
             )}
-
-            {/* QR refresh ring */}
-            <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 bg-card border border-border rounded-full px-4 py-1.5 flex items-center gap-2 text-xs text-muted-foreground shadow-sm">
-              <RefreshCw className="w-3 h-3" />
-              <span>Refreshes in <strong>{qrCountdown}s</strong></span>
-            </div>
           </div>
-
-          <div className="mt-6 text-center text-sm text-muted-foreground">
-            Scan with <span className="font-semibold text-foreground">AttendX</span> app → Verify with Fingerprint / Face ID
-          </div>
+          <p className="text-xs text-muted-foreground tabular-nums">
+            Refreshes in {qrCountdown}s
+          </p>
         </div>
 
-        {/* Info panel */}
-        <div className="space-y-8 max-w-sm w-full">
-
-          {/* Live Rotating Classroom Code */}
-          <div className="bg-card border border-border rounded-2xl p-6">
-            <p className="text-xs text-muted-foreground uppercase tracking-widest font-medium mb-2">
-              Live Classroom Code
-            </p>
-            <p className="font-mono text-4xl xl:text-5xl font-bold tracking-wider text-foreground">
+        {/* Info panel — flat hierarchy without nested boxes */}
+        <div className="space-y-6 max-w-sm w-full">
+          <div>
+            <p className="text-xs text-muted-foreground">Classroom code</p>
+            <p className="font-mono text-4xl xl:text-5xl font-semibold tracking-[0.14em] tabular-nums text-foreground mt-1">
               {data.dynamicCode || '------'}
             </p>
-            <p className="text-xs text-muted-foreground mt-2">
-              Rotates every {data.qrRefreshSeconds || 15}s · Use if camera unavailable
+            <p className="text-xs text-muted-foreground mt-1.5 tabular-nums">
+              Rotates every {data.qrRefreshSeconds || 15}s
             </p>
           </div>
 
-          {/* Live count */}
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 flex items-center justify-center">
-              <Users className="w-7 h-7 text-emerald-600" />
+          <div className="h-px bg-border/60" />
+
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-lg bg-muted flex items-center justify-center text-foreground">
+              <Users className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-4xl font-bold font-mono text-emerald-600">
+              <p className="text-3xl font-semibold tabular-nums text-foreground">
                 {data.totalPresent}
                 {data.capacity && (
-                  <span className="text-xl text-muted-foreground font-normal">/{data.capacity}</span>
+                  <span className="text-lg text-muted-foreground font-normal"> / {data.capacity}</span>
                 )}
               </p>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 {data.capacity
-                  ? `students present · ${data.capacity - data.totalPresent} seats left`
-                  : 'students present'}
+                  ? `${data.capacity - data.totalPresent} seats remaining`
+                  : 'Checked in'}
               </p>
             </div>
           </div>
         </div>
-      </div>
+      </main>
 
       {/* Footer */}
-      <div className="px-8 py-3 border-t border-border/40 flex items-center justify-between text-xs text-muted-foreground/60">
-        <span>Powered by <strong>AttendX</strong></span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-          Live · Updates every {data.qrRefreshSeconds}s
-        </span>
-        <span>Closes at {new Date(data.expiryTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-      </div>
+      <footer className="px-8 py-3 border-t border-border/60 flex items-center justify-between text-xs text-muted-foreground tabular-nums">
+        <span>AttendX</span>
+        <span>Ends {new Date(data.expiryTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+      </footer>
     </div>
   )
 }

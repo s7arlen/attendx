@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef, useId } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
   Play, Users, Clock, QrCode, Hash,
   X, RefreshCw, AlertCircle, FileText,
   Maximize2, Minimize2, Copy, Check,
-  ExternalLink, MapPin, Shield, Presentation,
+  ExternalLink, MapPin, Shield,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -29,26 +29,64 @@ interface LiveSessionModalProps {
   onClose: () => void
 }
 
+interface LiveRecordItem {
+  _id?: string
+  timestamp?: string
+  createdAt?: string
+  studentId?: { name?: string; rollNumber?: string; email?: string } | string
+}
+
 // QR refresh interval is configured per-session via Admin Settings (default 15s)
 const DEFAULT_QR_REFRESH = 15
 
 function LiveSessionModal({ session, onEnd, ending, onClose }: LiveSessionModalProps) {
+  const dialogRef = useRef<HTMLDialogElement>(null)
+  const headingId = useId()
   const [msLeft, setMsLeft] = useState(() => timeRemaining(session.expiryTime))
   const [qrCodeData, setQrCodeData] = useState(session.qrCodeData)
   const [dynamicCode, setDynamicCode] = useState(session.dynamicCode || '')
   const [socketRefreshSeconds, setSocketRefreshSeconds] = useState<number | null>(null)
-  const initialQrInterval = (session as any).qrRefreshSeconds ?? DEFAULT_QR_REFRESH
+  const initialQrInterval = session.qrRefreshSeconds ?? DEFAULT_QR_REFRESH
   const [qrSecondsLeft, setQrSecondsLeft] = useState(initialQrInterval)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isProjectorMode, setIsProjectorMode] = useState(false)
   const [showRoster, setShowRoster] = useState(false)
-  const [copiedField, setCopiedField] = useState<'sessionCode' | 'passwordCode' | null>(null)
+  const [copiedCode, setCopiedCode] = useState(false)
   const [confirmEndOpen, setConfirmEndOpen] = useState(false)
   const [rosterSearch, setRosterSearch] = useState('')
 
   // Live attendee count + QR sync — socket push, fall back to poll
   const [socketPresent, setSocketPresent] = useState<number | null>(null)
   const socket = useSocket()
+
+  // Open native modal dialog & attach light-dismiss fallback for browsers without `closedby`
+  useEffect(() => {
+    const dialog = dialogRef.current
+    if (!dialog) return
+    if (!dialog.open) {
+      dialog.showModal()
+    }
+
+    if ('closedBy' in HTMLDialogElement.prototype) return
+
+    const isOutside = (e: PointerEvent) => {
+      const r = dialog.getBoundingClientRect()
+      return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom
+    }
+    let pressedOutside = false
+    const onDown = (e: PointerEvent) => { pressedOutside = isOutside(e) }
+    const onUp = (e: PointerEvent) => {
+      if (pressedOutside && isOutside(e) && !isProjectorMode) {
+        dialog.close()
+      }
+    }
+    dialog.addEventListener('pointerdown', onDown)
+    dialog.addEventListener('pointerup', onUp)
+    return () => {
+      dialog.removeEventListener('pointerdown', onDown)
+      dialog.removeEventListener('pointerup', onUp)
+    }
+  }, [isProjectorMode])
 
   const { data: liveData } = useQuery({
     queryKey: ['live-session', session._id],
@@ -60,7 +98,7 @@ function LiveSessionModal({ session, onEnd, ending, onClose }: LiveSessionModalP
   const qrInterval: number =
     liveData?.session?.qrRefreshSeconds ??
     socketRefreshSeconds ??
-    (session as any).qrRefreshSeconds ??
+    session.qrRefreshSeconds ??
     DEFAULT_QR_REFRESH
 
   useEffect(() => {
@@ -113,23 +151,6 @@ function LiveSessionModal({ session, onEnd, ending, onClose }: LiveSessionModalP
     return () => clearInterval(tick)
   }, [msLeft, session._id, doRefresh, qrInterval])
 
-  // Escape key handler for Projector Mode & dialog
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (confirmEndOpen) {
-          setConfirmEndOpen(false)
-        } else if (isProjectorMode) {
-          setIsProjectorMode(false)
-        } else {
-          onClose()
-        }
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isProjectorMode, confirmEndOpen, onClose])
-
   useEffect(() => {
     socket.joinSession(session._id)
     const offMarked = socket.onEvent('attendance:marked', (d: { totalPresent: number }) => {
@@ -149,11 +170,11 @@ function LiveSessionModal({ session, onEnd, ending, onClose }: LiveSessionModalP
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session._id])
 
-  const totalPresent = socketPresent ?? liveData?.totalPresent ?? session.totalPresent
+  const totalPresent: number = socketPresent ?? liveData?.totalPresent ?? session.totalPresent
   const absentCount: number = liveData?.absentCount ?? 0
-  const capacity: number | null = (session as any).capacity ?? null
-  const sessionType: string = (session as any).sessionType ?? 'class'
-  const venue: string | null = (session as any).venue ?? null
+  const capacity: number | null = session.capacity ?? null
+  const sessionType: string = session.sessionType ?? 'class'
+  const venue: string | null = session.venue ?? null
   const projectorSecret = liveData?.session?.projectorSecret || session.projectorSecret || ''
   const projectorUrl = `${window.location.origin}/projector/${session.sessionCode}${projectorSecret ? `?key=${encodeURIComponent(projectorSecret)}` : ''}`
   const subjectName = typeof session.subjectId === 'object'
@@ -162,19 +183,21 @@ function LiveSessionModal({ session, onEnd, ending, onClose }: LiveSessionModalP
     ? (session.subjectId as { subjectCode?: string }).subjectCode || '' : ''
 
   const isExpired = msLeft <= 0
-  const sessionDurationMinutes = session.duration || 15
+  const endTimeLabel = new Date(session.expiryTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const totalTarget = capacity ?? (totalPresent + absentCount > 0 ? totalPresent + absentCount : null)
+  const progressPct = totalTarget ? Math.min(100, (totalPresent / totalTarget) * 100) : 0
 
-  const handleCopy = (text: string, field: 'sessionCode' | 'passwordCode') => {
+  const handleCopy = (text: string) => {
     if (navigator?.clipboard?.writeText) {
       navigator.clipboard.writeText(text)
     }
-    setCopiedField(field)
+    setCopiedCode(true)
     toast({ title: 'Copied to clipboard', description: text })
-    setTimeout(() => setCopiedField(null), 2000)
+    setTimeout(() => setCopiedCode(false), 2000)
   }
 
-  const attendanceRecords = (liveData?.attendanceRecords as any[]) || []
-  const filteredRecords = attendanceRecords.filter((rec: any) => {
+  const attendanceRecords = (liveData?.attendanceRecords as LiveRecordItem[]) || []
+  const filteredRecords = attendanceRecords.filter((rec) => {
     if (!rosterSearch) return true
     const student = typeof rec.studentId === 'object' ? rec.studentId : null
     const name = student?.name || ''
@@ -183,379 +206,357 @@ function LiveSessionModal({ session, onEnd, ending, onClose }: LiveSessionModalP
     return name.toLowerCase().includes(query) || roll.toLowerCase().includes(query)
   })
 
-  // ── Projector View ─────────────────────────────────────────────────────────
-  if (isProjectorMode) {
-    return (
-      <div className="fixed inset-0 z-50 bg-background text-foreground flex flex-col justify-between p-8 sm:p-12 select-none overflow-y-auto overscroll-contain">
-        {/* Top */}
-        <div className="flex items-center justify-between border-b border-border/60 pb-6">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">{subjectName}</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              {subjectCode} · {sessionType.charAt(0).toUpperCase() + sessionType.slice(1)}
-              {venue && ` · ${venue}`}
-            </p>
-          </div>
-          <div className="flex items-center gap-6">
-            <div className="text-right">
-              <span className={`text-3xl sm:text-4xl font-mono font-semibold tracking-tight ${msLeft < 60_000 ? 'text-destructive' : ''}`}>
-                {isExpired ? '00:00' : formatTimeRemaining(msLeft)}
-              </span>
-              <p className="text-xs text-muted-foreground">Remaining</p>
+  return (
+    <dialog
+      ref={dialogRef}
+      aria-labelledby={headingId}
+      onClose={onClose}
+      onCancel={(e) => {
+        if (isProjectorMode) {
+          e.preventDefault()
+          setIsProjectorMode(false)
+        } else if (confirmEndOpen) {
+          e.preventDefault()
+          setConfirmEndOpen(false)
+        }
+      }}
+      {...({ closedby: isProjectorMode ? 'closerequest' : 'any' } as Record<string, unknown>)}
+      className={
+        isProjectorMode
+          ? 'm-0 max-w-none max-h-none w-screen h-screen bg-background text-foreground p-0 border-0 open:flex open:flex-col select-none'
+          : 'm-auto w-[calc(100%-2rem)] max-w-[620px] bg-card text-foreground rounded-xl border border-border/80 shadow-xl p-0 overflow-hidden open:flex open:flex-col'
+      }
+    >
+      {isProjectorMode ? (
+        <div className="flex flex-col justify-between flex-1 p-8 sm:p-12 overflow-y-auto">
+          <header className="flex items-start justify-between border-b border-border/60 pb-5 gap-6">
+            <div>
+              <h1 id={headingId} className="text-2xl sm:text-3xl font-semibold tracking-tight [text-wrap:balance]">
+                {subjectName}
+              </h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                {subjectCode} · {sessionType.charAt(0).toUpperCase() + sessionType.slice(1)}
+                {venue && ` · ${venue}`}
+              </p>
             </div>
+            <div className="flex items-center gap-6 shrink-0">
+              <div className="text-right">
+                <span className={`text-3xl sm:text-4xl font-semibold tracking-tight tabular-nums ${msLeft < 60_000 ? 'text-destructive' : ''}`}>
+                  {isExpired ? '00:00' : formatTimeRemaining(msLeft)}
+                </span>
+                <p className="text-xs text-muted-foreground mt-0.5">Remaining</p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsProjectorMode(false)}
+                className="gap-1.5"
+              >
+                <Minimize2 className="w-3.5 h-3.5" />
+                Exit
+              </Button>
+            </div>
+          </header>
+
+          <div className="my-auto py-10 flex flex-col lg:flex-row items-center justify-center gap-14 max-w-5xl mx-auto w-full">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-80 h-80 sm:w-96 sm:h-96 bg-white p-4 rounded-xl border border-border flex items-center justify-center relative">
+                {qrCodeData ? (
+                  <img
+                    src={qrCodeData}
+                    alt="Attendance QR Code"
+                    className={`w-full h-full object-contain ${isRefreshing ? 'opacity-40' : 'opacity-100'}`}
+                  />
+                ) : (
+                  <QrCode className="w-24 h-24 text-muted-foreground/30 animate-pulse" />
+                )}
+                {isRefreshing && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-white/70 rounded-xl">
+                    <RefreshCw className="w-7 h-7 text-muted-foreground animate-spin" />
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground tabular-nums">Rotates every {qrInterval}s</p>
+            </div>
+
+            <div className="space-y-6 max-w-sm w-full">
+              <div>
+                <p className="text-xs text-muted-foreground">Classroom code</p>
+                <p className="font-mono text-4xl font-semibold tracking-[0.14em] tabular-nums mt-1 select-all">
+                  {dynamicCode || '------'}
+                </p>
+              </div>
+              <div className="pt-5 border-t border-border/60">
+                <p className="text-2xl font-semibold tabular-nums">
+                  {totalPresent}{totalTarget ? ` / ${totalTarget}` : ''}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">Checked in</p>
+              </div>
+            </div>
+          </div>
+
+          <footer className="flex items-center justify-between border-t border-border/60 pt-4 text-xs text-muted-foreground">
+            <span className="tabular-nums">Ends {endTimeLabel}</span>
             <Button
+              type="button"
               variant="outline"
               size="sm"
-              onClick={() => setIsProjectorMode(false)}
-              className="gap-1.5"
+              onClick={onEnd}
+              loading={ending}
+              className="text-xs text-muted-foreground hover:text-destructive"
             >
-              <Minimize2 className="w-3.5 h-3.5" />
-              Exit (Esc)
+              End session
             </Button>
-          </div>
+          </footer>
         </div>
-
-        {/* Center */}
-        <div className="my-auto py-10 flex flex-col lg:flex-row items-center justify-center gap-14 max-w-5xl mx-auto w-full">
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-80 h-80 sm:w-96 sm:h-96 bg-white p-4 rounded-2xl border border-border shadow-lg flex items-center justify-center relative">
-              {qrCodeData ? (
-                <img
-                  src={qrCodeData}
-                  alt="Attendance QR Code"
-                  className={`w-full h-full object-contain ${isRefreshing ? 'opacity-40' : 'opacity-100'}`}
-                />
-              ) : (
-                <QrCode className="w-24 h-24 text-muted-foreground/30 animate-pulse" />
-              )}
-              {isRefreshing && (
-                <div className="absolute inset-0 flex items-center justify-center bg-white/70 rounded-2xl">
-                  <RefreshCw className="w-8 h-8 text-muted-foreground animate-spin" />
-                </div>
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground">Refreshes every {qrInterval}s</p>
-          </div>
-
-          <div className="space-y-6 max-w-sm w-full">
-            <div>
-              <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium mb-1">
-                Live Classroom Code (Rotates every {qrInterval}s)
+      ) : (
+        <>
+          {/* Header */}
+          <header className="flex items-start justify-between gap-4 px-6 py-4 border-b border-border/60">
+            <div className="min-w-0">
+              <h1 id={headingId} className="text-base font-semibold leading-snug tracking-tight text-foreground [text-wrap:balance]">
+                {subjectName}
+              </h1>
+              <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">
+                {subjectCode}{venue ? ` · ${venue}` : ''} · Ends {endTimeLabel}
               </p>
-              <p className="font-mono text-4xl font-bold tracking-wider select-all">{dynamicCode || '------'}</p>
-              <p className="text-[11px] text-muted-foreground mt-1">Session ID: {session.sessionCode}</p>
-            </div>
-            <div className="pt-2 border-t border-border/60">
-              <p className="text-2xl font-semibold font-mono">{totalPresent}</p>
-              <p className="text-xs text-muted-foreground">Students checked in</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Bottom */}
-        <div className="flex items-center justify-between border-t border-border/60 pt-4 text-xs text-muted-foreground">
-          <span>Closes at {new Date(session.expiryTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onEnd}
-            loading={ending}
-            className="text-xs text-muted-foreground hover:text-destructive"
-          >
-            End Session
-          </Button>
-        </div>
-      </div>
-    )
-  }
-
-  // ── Standard Modal View ────────────────────────────────────────────────────
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overscroll-contain">
-      <div className="relative w-full max-w-2xl bg-card rounded-2xl shadow-xl border border-border overflow-hidden animate-in fade-in-0 zoom-in-98 duration-150">
-
-        {/* Clean Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border/60">
-          <div className="flex items-center gap-3">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
-            <div>
-              <h2 className="font-semibold text-base sm:text-lg leading-tight text-foreground">{subjectName}</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">{subjectCode} · {sessionDurationMinutes} min session</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsProjectorMode(true)}
-              className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground gap-1.5"
-              title="Full screen presentation"
-            >
-              <Maximize2 className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Present</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={onClose}
-              className="text-muted-foreground hover:text-foreground"
-              aria-label="Close"
-            >
-              <X className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-
-        {/* Modal Body */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-6">
-
-          {/* Left Column: Pure QR Code */}
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-full aspect-square max-w-[260px] bg-white p-3 rounded-xl border border-border shadow-xs flex items-center justify-center relative">
-              {qrCodeData ? (
-                <img
-                  src={qrCodeData}
-                  alt="Attendance QR Code"
-                  className={`w-full h-full object-contain transition-opacity duration-200 ${isRefreshing ? 'opacity-40' : 'opacity-100'}`}
-                />
-              ) : (
-                <QrCode className="w-16 h-16 text-muted-foreground/30 animate-pulse" />
-              )}
-              {isRefreshing && (
-                <div className="absolute inset-0 flex items-center justify-center bg-white/70 rounded-xl">
-                  <RefreshCw className="w-6 h-6 text-muted-foreground animate-spin" />
-                </div>
-              )}
-              {isExpired && (
-                <div className="absolute inset-0 rounded-xl bg-background/80 backdrop-blur-xs flex items-center justify-center">
-                  <span className="font-medium text-sm text-foreground">Session expired</span>
-                </div>
-              )}
             </div>
 
-            {/* Minimal refresh info */}
-            <div className="flex items-center justify-between w-full max-w-[260px] text-xs text-muted-foreground px-0.5">
-              <span>Auto-refreshes in {qrSecondsLeft}s</span>
-              <button
-                onClick={() => { doRefresh(); setQrSecondsLeft(qrInterval) }}
-                disabled={isRefreshing || isExpired}
-                className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors disabled:opacity-50"
-              >
-                Refresh
-              </button>
-            </div>
-          </div>
-
-          {/* Right Column: Natural Information Hierarchy */}
-          <div className="flex flex-col justify-between">
-            {!showRoster ? (
-              <div className="space-y-4">
-                {/* Timer */}
-                <div>
-                  <div className="flex items-baseline justify-between">
-                    <span className={`text-3xl sm:text-4xl font-semibold font-mono tracking-tight text-foreground ${msLeft < 60_000 ? 'text-destructive' : ''}`}>
-                      {isExpired ? '00:00' : formatTimeRemaining(msLeft)}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      Ends at {new Date(session.expiryTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">Time remaining</p>
-                </div>
-
-                <div className="h-px bg-border/60" />
-
-                {/* Manual Entry Rotating Code */}
-                <div className="space-y-2.5">
-                  <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                    Manual Entry (Rotates Every {qrInterval}s)
-                  </span>
-
-                  {/* Dynamic Classroom Code */}
-                  <div className="flex items-center justify-between p-2.5 rounded-lg border border-border/70 bg-muted/30">
-                    <div>
-                      <span className="text-[10px] text-muted-foreground uppercase block font-medium">Live Classroom Code</span>
-                      <span className="font-mono text-base font-semibold tracking-wider text-foreground select-all">
-                        {dynamicCode || '------'}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground block mt-0.5">Session ID: {session.sessionCode}</span>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleCopy(dynamicCode || session.sessionCode, 'sessionCode')}
-                      className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground gap-1"
-                    >
-                      {copiedField === 'sessionCode' ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copiedField === 'sessionCode' ? 'Copied' : 'Copy'}</span>
-                    </Button>
-                  </div>
-
-                  {/* Passcode removed — biometric only */}
-
-                </div>
-
-                <div className="h-px bg-border/60" />
-
-                {/* Attendees counter + absent + projector link */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                      <span className="text-sm font-medium text-foreground">
-                        {totalPresent} {totalPresent === 1 ? 'student' : 'students'} present
-                      </span>
-                    </div>
-                    {attendanceRecords.length > 0 && (
-                      <button
-                        onClick={() => setShowRoster(true)}
-                        className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
-                      >
-                        View list
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Live progress bar (only for strict mode with known enrolled count) */}
-                  {absentCount > 0 && (
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>{absentCount} not yet marked</span>
-                        {capacity && <span>Cap: {capacity}</span>}
-                      </div>
-                      <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-                          style={{ width: `${Math.min(100, (totalPresent / (totalPresent + absentCount)) * 100)}%` }}
-                        />
-                      </div>
-                    </div>
-                  )}
-                  {capacity && (
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>Capacity</span>
-                        <span>{totalPresent}/{capacity}</span>
-                      </div>
-                      <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all duration-500 ${
-                            totalPresent / capacity > 0.9 ? 'bg-red-500' :
-                            totalPresent / capacity > 0.7 ? 'bg-amber-500' : 'bg-primary'
-                          }`}
-                          style={{ width: `${Math.min(100, (totalPresent / capacity) * 100)}%` }}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Projector link */}
-                  <button
-                    onClick={() => { navigator.clipboard?.writeText(projectorUrl); window.open(projectorUrl, '_blank') }}
-                    className="flex items-center gap-1.5 text-xs text-primary hover:underline"
-                  >
-                    <Presentation className="w-3 h-3" />
-                    Open Projector View
-                    <ExternalLink className="w-3 h-3" />
-                  </button>
-                </div>
-              </div>
-            ) : (
-              /* Attendees List View */
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Attendees ({totalPresent})
-                  </span>
-                  <button
-                    onClick={() => setShowRoster(false)}
-                    className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
-                  >
-                    Back to codes
-                  </button>
-                </div>
-
-                {attendanceRecords.length > 4 && (
-                  <input
-                    type="text"
-                    placeholder="Search student..."
-                    value={rosterSearch}
-                    onChange={(e) => setRosterSearch(e.target.value)}
-                    className="w-full px-2.5 py-1.5 text-xs rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-                  />
-                )}
-
-                <div className="max-h-52 overflow-y-auto divide-y divide-border/50 pr-1">
-                  {filteredRecords.length > 0 ? (
-                    filteredRecords.map((record: any, index: number) => {
-                      const student = typeof record.studentId === 'object' ? record.studentId : null
-                      const name = student?.name || `Student ${index + 1}`
-                      const roll = student?.rollNumber || student?.email || ''
-                      const time = new Date(record.timestamp || record.createdAt).toLocaleTimeString([], {
-                        hour: '2-digit', minute: '2-digit'
-                      })
-                      return (
-                        <div key={record._id || index} className="py-2 flex items-center justify-between text-xs">
-                          <div>
-                            <p className="font-medium text-foreground">{name}</p>
-                            <p className="text-[11px] text-muted-foreground font-mono">{roll}</p>
-                          </div>
-                          <span className="text-[11px] text-muted-foreground font-mono">{time}</span>
-                        </div>
-                      )
-                    })
-                  ) : (
-                    <p className="text-xs text-muted-foreground text-center py-6">No students found</p>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Clean Footer */}
-        <div className="px-6 py-3.5 border-t border-border/60 flex items-center justify-between">
-          <span className="text-xs text-muted-foreground">
-            Expires at {new Date(session.expiryTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </span>
-
-          {confirmEndOpen ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">End this session?</span>
+            <div className="flex items-center gap-1 shrink-0">
               <Button
+                type="button"
                 variant="ghost"
                 size="sm"
-                onClick={() => setConfirmEndOpen(false)}
-                disabled={ending}
-                className="h-8 text-xs"
+                onClick={() => setIsProjectorMode(true)}
+                className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground gap-1.5"
+                title="Full-screen classroom view"
               >
-                Cancel
+                <Maximize2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Present</span>
               </Button>
               <Button
-                variant="destructive"
-                size="sm"
-                loading={ending}
-                onClick={onEnd}
-                className="h-8 text-xs"
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => dialogRef.current?.close()}
+                className="text-muted-foreground hover:text-foreground"
+                aria-label="Close"
               >
-                End Session
+                <X className="w-4 h-4" />
               </Button>
             </div>
-          ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setConfirmEndOpen(true)}
-              className="h-8 text-xs text-muted-foreground hover:text-destructive hover:border-destructive/50 transition-colors"
-            >
-              End Session
-            </Button>
-          )}
-        </div>
+          </header>
 
-      </div>
-    </div>
+          {/* Body */}
+          <div className="p-6 grid grid-cols-1 sm:grid-cols-[224px_1fr] gap-7 items-center">
+            {/* Left: QR */}
+            <div className="flex flex-col items-center">
+              <div className="w-full max-w-[224px] aspect-square bg-white p-2.5 rounded-lg border border-border/80 flex items-center justify-center relative">
+                {qrCodeData ? (
+                  <img
+                    src={qrCodeData}
+                    alt="Attendance QR Code"
+                    className={`w-full h-full object-contain transition-opacity duration-200 ${isRefreshing ? 'opacity-40' : 'opacity-100'}`}
+                  />
+                ) : (
+                  <QrCode className="w-14 h-14 text-muted-foreground/30 animate-pulse" />
+                )}
+                {isRefreshing && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-white/70 rounded-lg">
+                    <RefreshCw className="w-5 h-5 text-muted-foreground animate-spin" />
+                  </div>
+                )}
+                {isExpired && (
+                  <div className="absolute inset-0 rounded-lg bg-background/85 backdrop-blur-xs flex items-center justify-center">
+                    <span className="text-xs font-medium text-foreground">Session ended</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-2.5 flex items-center justify-between w-full max-w-[224px] text-xs text-muted-foreground tabular-nums">
+                <span>Refreshes in {qrSecondsLeft}s</span>
+                <button
+                  type="button"
+                  onClick={() => { doRefresh(); setQrSecondsLeft(qrInterval) }}
+                  disabled={isRefreshing || isExpired}
+                  className="text-foreground/70 hover:text-foreground transition-colors disabled:opacity-40"
+                >
+                  Refresh
+                </button>
+              </div>
+            </div>
+
+            {/* Right: Clean hierarchy without nested boxes */}
+            <div className="min-w-0">
+              {!showRoster ? (
+                <div>
+                  {/* Remaining clock */}
+                  <div>
+                    <div className={`text-4xl font-semibold tracking-tight tabular-nums leading-none ${
+                      msLeft < 60_000 ? 'text-destructive' : 'text-foreground'
+                    }`}>
+                      {isExpired ? '00:00' : formatTimeRemaining(msLeft)}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1.5">Time remaining</p>
+                  </div>
+
+                  <div className="h-px bg-border/60 my-4" />
+
+                  {/* Rotating classroom code */}
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Classroom code</span>
+                      <span className="text-[11px] text-muted-foreground tabular-nums">Rotates every {qrInterval}s</span>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between gap-3">
+                      <span className="font-mono text-2xl font-semibold tracking-[0.14em] tabular-nums text-foreground select-all">
+                        {dynamicCode || '------'}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleCopy(dynamicCode || session.sessionCode)}
+                        className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground gap-1.5 shrink-0"
+                      >
+                        {copiedCode ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedCode ? 'Copied' : 'Copy'}</span>
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="h-px bg-border/60 my-4" />
+
+                  {/* Attendance tally */}
+                  <div className="space-y-2">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-sm font-medium text-foreground tabular-nums">
+                        {totalPresent}{totalTarget ? ` / ${totalTarget}` : ''} present
+                      </span>
+                      {attendanceRecords.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setShowRoster(true)}
+                          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          View list
+                        </button>
+                      )}
+                    </div>
+                    {totalTarget !== null && (
+                      <div className="w-full h-1 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-foreground/80 rounded-full transition-all duration-500"
+                          style={{ width: `${progressPct}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      Present ({totalPresent})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowRoster(false)}
+                      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Back
+                    </button>
+                  </div>
+
+                  {attendanceRecords.length > 4 && (
+                    <input
+                      type="text"
+                      placeholder="Filter students…"
+                      value={rosterSearch}
+                      onChange={(e) => setRosterSearch(e.target.value)}
+                      className="w-full px-2.5 py-1.5 text-xs rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                  )}
+
+                  <div className="max-h-52 overflow-y-auto divide-y divide-border/50 pr-1">
+                    {filteredRecords.length > 0 ? (
+                      filteredRecords.map((record, index) => {
+                        const student = typeof record.studentId === 'object' ? record.studentId : null
+                        const name = student?.name || `Student ${index + 1}`
+                        const roll = student?.rollNumber || student?.email || ''
+                        const time = new Date(record.timestamp || record.createdAt || Date.now()).toLocaleTimeString([], {
+                          hour: '2-digit', minute: '2-digit',
+                        })
+                        return (
+                          <div key={record._id || index} className="py-2 flex items-center justify-between text-xs gap-3">
+                            <div className="min-w-0">
+                              <p className="font-medium text-foreground truncate">{name}</p>
+                              <p className="text-[11px] text-muted-foreground font-mono truncate">{roll}</p>
+                            </div>
+                            <span className="text-[11px] text-muted-foreground tabular-nums shrink-0">{time}</span>
+                          </div>
+                        )
+                      })
+                    ) : (
+                      <p className="text-xs text-muted-foreground text-center py-6">No matching students</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Footer */}
+          <footer className="px-6 py-3 border-t border-border/60 flex items-center justify-between gap-3 bg-muted/20">
+            <button
+              type="button"
+              onClick={() => { navigator.clipboard?.writeText(projectorUrl); window.open(projectorUrl, '_blank') }}
+              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>Projector view</span>
+            </button>
+
+            {confirmEndOpen ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">End session?</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setConfirmEndOpen(false)}
+                  disabled={ending}
+                  className="h-7 px-2 text-xs"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  loading={ending}
+                  onClick={onEnd}
+                  className="h-7 px-2.5 text-xs"
+                >
+                  Confirm
+                </Button>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirmEndOpen(true)}
+                className="h-8 text-xs text-muted-foreground hover:text-destructive hover:border-destructive/50 transition-colors"
+              >
+                End session
+              </Button>
+            )}
+          </footer>
+        </>
+      )}
+    </dialog>
   )
 }
 
@@ -596,7 +597,7 @@ export default function TeacherSessionsPage() {
   })
 
   const startMutation = useMutation({
-    mutationFn: (data: { subjectId: string; duration: number }) =>
+    mutationFn: (data: Parameters<typeof attendanceService.startSession>[0]) =>
       attendanceService.startSession(data),
     onSuccess: (session) => {
       queryClient.invalidateQueries({ queryKey: ['teacher-sessions'] })
@@ -1018,7 +1019,7 @@ export default function TeacherSessionsPage() {
                   geoFence: enableGeoFence && geoCoords
                     ? { latitude: geoCoords.latitude, longitude: geoCoords.longitude, radiusMeters: parseInt(geoRadiusMeters) || 150 }
                     : null,
-                } as any)
+                })
               }}
             >
               <Play className="w-4 h-4" />
