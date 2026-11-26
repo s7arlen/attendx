@@ -221,7 +221,7 @@ export default function RiskDashboardPage() {
               {selectedStudent.riskLevel !== 'UNASSESSED' && (
                 <div>
                   <p className="text-sm font-semibold mb-2">Contributing Factors</p>
-                  {(data?.highRiskStudents.find((x: any) => (x.student as User)?.id === (selectedStudent.student as User)?.id)?.factors || []).map((f: ContributingFactor, i: number) => (
+                  {((data?.highRiskStudents.find((x: any) => (x.student as User)?.id === (selectedStudent.student as User)?.id)?.factors) || selectedStudent.contributingFactors || []).map((f: ContributingFactor, i: number) => (
                     <div key={i} className="flex justify-between items-center py-1.5 border-b last:border-0">
                       <span className="text-sm">{f.factor}</span>
                       <div className="flex items-center gap-2">

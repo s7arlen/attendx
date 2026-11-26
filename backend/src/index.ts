@@ -137,6 +137,19 @@ app.post('/admin-trigger/auto-session', verifyTriggerAuth, async (_req, res) => 
   res.json({ success: true, message: 'Auto session check triggered manually' });
 });
 
+// Nightly risk recalculation — reassess all active students
+app.post('/admin-trigger/recalculate-risk', verifyTriggerAuth, async (_req, res) => {
+  const { User } = await import('./models/User.model');
+  const { triggerRiskAssessment } = await import('./controllers/academic.controller');
+  const students = await User.find({ role: 'student', isActive: true }).select('_id').lean();
+  let done = 0, failed = 0;
+  for (const s of students) {
+    try { await triggerRiskAssessment(s._id.toString()); done++; }
+    catch { failed++; }
+  }
+  res.json({ success: true, message: `Risk recalculated: ${done} done, ${failed} failed`, data: { done, failed, total: students.length } });
+});
+
 // Error handler
 app.use(errorHandler);
 

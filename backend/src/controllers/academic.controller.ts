@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import { z } from 'zod';
+import mongoose from 'mongoose';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { Assessment } from '../models/Assessment.model';
 import { AssessmentResult } from '../models/AssessmentResult.model';
@@ -614,10 +615,20 @@ export const getRiskDashboard = async (req: AuthRequest, res: Response): Promise
       studentIds = students.map(s => s._id.toString());
     }
 
-    const riskData = await Promise.all(studentIds.map(async (sid) => {
-      const student = await User.findById(sid).select('name email rollNumber department year section');
-      const risk = await RiskAssessment.findOne({ studentId: sid }).sort({ createdAt: -1 });
-      return { student, risk };
+    // Batch fetch students and their latest risk assessments (avoids N+1)
+    const [allStudentDocs, latestRisks] = await Promise.all([
+      User.find({ _id: { $in: studentIds } }).select('name email rollNumber department year section').lean(),
+      RiskAssessment.aggregate([
+        { $match: { studentId: { $in: studentIds.map(id => new mongoose.Types.ObjectId(id)) } } },
+        { $sort: { createdAt: -1 as -1 } },
+        { $group: { _id: '$studentId', doc: { $first: '$$ROOT' } } },
+        { $replaceRoot: { newRoot: '$doc' } },
+      ]),
+    ]);
+    const riskMap = new Map(latestRisks.map((r: any) => [r.studentId.toString(), r]));
+    const riskData = allStudentDocs.map((student: any) => ({
+      student,
+      risk: riskMap.get(student._id.toString()) || null,
     }));
 
     const high = riskData.filter(r => r.risk?.riskLevel === 'HIGH').length;
@@ -646,6 +657,9 @@ export const getRiskDashboard = async (req: AuthRequest, res: Response): Promise
           student: r.student,
           riskLevel: r.risk?.riskLevel || 'UNASSESSED',
           riskScore: r.risk?.riskScore || 0,
+          contributingFactors: r.risk?.contributingFactors || [],
+          attendancePercentage: r.risk?.attendancePercentage,
+          internalMarksAverage: r.risk?.internalMarksAverage,
           lastAssessed: r.risk?.createdAt,
         })),
       },
@@ -739,7 +753,18 @@ export const whatIfSimulate = async (req: AuthRequest, res: Response): Promise<v
       if (internalMarksAverage != null) {
         if (internalMarksAverage < 40) score += 35;
         else if (internalMarksAverage < 55) score += 20;
+        else if (internalMarksAverage < 70) score += 8;
         factors.push({ factor: 'Internal Marks', value: internalMarksAverage, impact: internalMarksAverage < 55 ? 'HIGH' : 'MEDIUM' });
+      }
+      if (quizAverage != null) {
+        if (quizAverage < 40) score += 15;
+        else if (quizAverage < 55) score += 8;
+        factors.push({ factor: 'Quiz Average', value: quizAverage, impact: quizAverage < 40 ? 'MEDIUM' : 'LOW' });
+      }
+      if (assignmentCompletion != null) {
+        if (assignmentCompletion < 50) score += 10;
+        else if (assignmentCompletion < 75) score += 5;
+        factors.push({ factor: 'Assignment Completion', value: assignmentCompletion, impact: assignmentCompletion < 50 ? 'MEDIUM' : 'LOW' });
       }
       simRisk = {
         studentId: 'simulation',
