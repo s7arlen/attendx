@@ -57,7 +57,7 @@ export default function StudentDashboard() {
             <span className="w-2 h-2 rounded-full gradient-sunset status-live inline-block" />
             Active Sessions
           </h3>
-          {activeSessions.map((session: { _id: string; subjectId: { subjectName: string } | string; sessionCode: string }) => (
+          {activeSessions.map((session: { _id: string; subjectId: { subjectName: string } | string }) => (
             <div key={session._id}
               className="flex items-center justify-between p-4 rounded-2xl border border-rose-500/25 bg-rose-500/[0.05] dark:bg-rose-500/[0.03] backdrop-blur-xl shadow-sm">
               <div>
@@ -65,7 +65,7 @@ export default function StudentDashboard() {
                   {typeof session.subjectId === 'object' && session.subjectId !== null ? session.subjectId.subjectName : 'Session'}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Session Code: <span className="font-mono font-bold text-foreground px-1.5 py-0.5 rounded bg-muted/60">{session.sessionCode}</span>
+                  Session is live — scan the projector QR in class to mark attendance
                 </p>
               </div>
               <Button variant="sunset" size="sm" className="gap-1.5 shadow-md shadow-rose-950/20" onClick={() => navigate('/student/scan')}>

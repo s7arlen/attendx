@@ -16,20 +16,17 @@ import { webauthnService } from '@/services/webauthn.service'
 import { useSocket } from '@/hooks/useSocket'
 import { useAuthStore } from '@/store/authStore'
 import { toast } from '@/hooks/useToast'
-import { ApiError } from '@/types'
+import { ApiError, LivenessAction, LivenessProof } from '@/types'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 type Mode = 'choose' | 'camera' | 'manual'
-// Steps after QR is validated:
-// 'registering' → device not registered yet, show register prompt
-// 'biometric'   → device registered, fire biometric immediately
-// 'face'        → facial recognition verification
-type Step = 'registering' | 'biometric' | 'face' | 'face-register' | 'verify-method'
+type Step = 'enroll-required' | 'biometric' | 'face' | 'verify-method'
 
 interface ValidatedSession {
   id:              string
   subject?:        { _id?: string; subjectName?: string; subjectCode?: string }
-  qrToken:         string
+  challengeToken:  string
+  livenessActions: LivenessAction[]
   sessionType?:    string
   venue?:          string | null
   title?:          string | null
@@ -71,7 +68,7 @@ function QRScannerView({ onDecoded, onFallback }: {
       },
       () => {}
     ).catch(() => {
-      toast({ title: 'Camera unavailable', description: 'Grant camera permission or enter the code manually.', variant: 'destructive' })
+      toast({ title: 'Camera unavailable', description: 'Grant camera permission or enter the rotating code manually.', variant: 'destructive' })
       onFallback()
     })
     return () => { scanner.stop().catch(() => {}) }
@@ -91,7 +88,7 @@ function QRScannerView({ onDecoded, onFallback }: {
         </div>
       </div>
       <p className="text-xs text-muted-foreground text-center px-4 font-medium">
-        Align the QR code within the frame to scan
+        Align the live QR code within the frame to scan
       </p>
     </div>
   )
@@ -127,27 +124,27 @@ function SessionBanner({ session }: { session: ValidatedSession }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function ScanQRPage() {
   const [mode,                    setMode]                    = useState<Mode>('choose')
-  const [step,                    setStep]                    = useState<Step>('biometric')
+  const [step,                    setStep]                    = useState<Step>('verify-method')
   const [verificationMethod,      setVerificationMethod]      = useState<'biometric' | 'face' | null>(null)
-  const [sessionCode,             setSessionCode]             = useState('')
+  const [missingEnrollmentType,   setMissingEnrollmentType]   = useState<'face' | 'biometric'>('face')
+  const [classroomCode,           setClassroomCode]           = useState('')
   const [session,                 setSession]                 = useState<ValidatedSession | null>(null)
   const [showDone,                setShowDone]                = useState(false)
   const [validating,              setValidating]              = useState(false)
   const [biometricBusy,           setBiometricBusy]           = useState(false)
-  const [registerBusy,            setRegisterBusy]            = useState(false)
   const [facialRecognitionBusy,   setFacialRecognitionBusy]   = useState(false)
   const [lateEntry,               setLateEntry]               = useState(false)
 
-  const { user, updateUser } = useAuthStore()
+  const { user } = useAuthStore()
   const navigate = useNavigate()
   const socket   = useSocket()
 
   const reset = useCallback(() => {
     setMode('choose')
-    setStep('biometric')
+    setStep('verify-method')
     setVerificationMethod(null)
     setSession(null)
-    setSessionCode('')
+    setClassroomCode('')
     setShowDone(false)
     setValidating(false)
     setBiometricBusy(false)
@@ -171,7 +168,6 @@ export default function ScanQRPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.id])
 
-  // ── After session validated — decide step ────────────────────────────────
   const proceedWithSession = (validated: ValidatedSession) => {
     setSession(validated)
     setStep('verify-method')
@@ -190,7 +186,8 @@ export default function ScanQRPage() {
       proceedWithSession({
         id:              res.session?.id || sessionId,
         subject:         res.session?.subject,
-        qrToken:         secureToken,
+        challengeToken:  res.challengeToken,
+        livenessActions: res.livenessActions || ['blink', 'turn_left'],
         sessionType:     res.session?.sessionType,
         venue:           res.session?.venue,
         title:           res.session?.title,
@@ -199,7 +196,7 @@ export default function ScanQRPage() {
       })
     } catch (err) {
       const error = err as ApiError
-      toast({ title: 'QR expired or invalid', description: error.response?.data?.message || 'Ask your teacher to refresh the QR.', variant: 'destructive' })
+      toast({ title: 'QR expired or invalid', description: error.response?.data?.message || 'Scan the latest live QR on screen.', variant: 'destructive' })
       setMode('choose')
     } finally {
       setValidating(false)
@@ -212,17 +209,17 @@ export default function ScanQRPage() {
       if (!payload.sessionId || !payload.secureToken) throw new Error('bad')
       validateQR(payload.sessionId, payload.secureToken)
     } catch {
-      toast({ title: 'Unrecognised QR', description: 'Not an AttendX QR. Try entering the code manually.', variant: 'destructive' })
+      toast({ title: 'Unrecognised QR', description: 'Not an AttendX QR. Try entering the live classroom code.', variant: 'destructive' })
       setMode('choose')
     }
   }
 
-  // ── Manual session code lookup ───────────────────────────────────────────
+  // ── Rotating classroom code lookup ───────────────────────────────────────
   const findByCode = async () => {
-    if (!sessionCode.trim()) return
+    if (!classroomCode.trim()) return
     setValidating(true)
     try {
-      const res = await attendanceService.findSessionByCode(sessionCode.trim().toUpperCase())
+      const res = await attendanceService.findSessionByCode(classroomCode.trim().toUpperCase())
       if (res.alreadyMarked) {
         toast({ title: 'Already marked', variant: 'destructive' })
         return
@@ -230,7 +227,8 @@ export default function ScanQRPage() {
       proceedWithSession({
         id:              res.session.id,
         subject:         res.session.subject,
-        qrToken:         res.session.qrToken,
+        challengeToken:  res.challengeToken,
+        livenessActions: res.livenessActions || ['blink', 'turn_left'],
         sessionType:     res.session.sessionType,
         venue:           res.session.venue,
         title:           res.session.title,
@@ -239,7 +237,7 @@ export default function ScanQRPage() {
       })
     } catch (err) {
       const error = err as ApiError
-      toast({ title: 'Session not found', description: error.response?.data?.message || 'Check the code and try again.', variant: 'destructive' })
+      toast({ title: 'Invalid or expired code', description: error.response?.data?.message || 'Enter the current rotating classroom code from the projector.', variant: 'destructive' })
     } finally {
       setValidating(false)
     }
@@ -253,9 +251,9 @@ export default function ScanQRPage() {
     try {
       const coords = target.geoFenceEnabled ? await getOptionalCoords() : {}
       const result = await webauthnService.verifyAttendanceWithBiometric({
-        sessionId:   target.id,
-        subjectId:   target.subject?._id || '',
-        secureToken: target.qrToken,
+        sessionId:      target.id,
+        subjectId:      target.subject?._id || '',
+        challengeToken: target.challengeToken,
         ...coords,
       })
       setLateEntry(result.data?.isLate || false)
@@ -266,7 +264,6 @@ export default function ScanQRPage() {
       const error = err as ApiError
       const msg = error.response?.data?.message || error.message || ''
       if (msg.toLowerCase().includes('cancel') || msg.toLowerCase().includes('user')) {
-        // User cancelled the browser prompt — stay on page, let them retry
         toast({ title: 'Biometric cancelled', description: 'Tap the button to try again.', variant: 'info' as any })
       } else {
         toast({ title: 'Biometric failed', description: msg || 'Please try again.', variant: 'destructive' })
@@ -276,51 +273,30 @@ export default function ScanQRPage() {
     }
   }
 
-  // ── Register device then immediately verify ──────────────────────────────
-  const registerThenVerify = async () => {
-    setRegisterBusy(true)
-    try {
-      await webauthnService.registerDevice()
-      toast({ title: 'Device registered!', description: 'Now verifying your attendance…', variant: 'success' })
-      // Update user store so hasWebAuthn = true for future sessions
-      updateUser({ hasWebAuthn: true })
-      setStep('biometric')
-      await triggerBiometric()
-    } catch (err) {
-      const error = err as ApiError
-      const msg = error.response?.data?.message || error.message || ''
-      if (!msg.toLowerCase().includes('cancel')) {
-        toast({ title: 'Registration failed', description: msg || 'Could not register your device.', variant: 'destructive' })
-      }
-    } finally {
-      setRegisterBusy(false)
-    }
-  }
-
   // ── Trigger facial recognition ──────────────────────────────────────────
   const triggerFacialRecognition = async (s?: ValidatedSession) => {
     const target = s || session
     if (!target) return
     if (!user?.hasFaceDescriptor) {
-      setStep('face-register')
+      setMissingEnrollmentType('face')
+      setStep('enroll-required')
       return
     }
     setFacialRecognitionBusy(false)
     setStep('face')
-    // The FacialRecognitionCapture component will call onSuccess with descriptor
   }
 
-  const handleFaceVerified = async (faceDescriptor: number[]) => {
+  const handleFaceVerified = async (livenessProof: LivenessProof) => {
     const target = session
     if (!target) return
     setFacialRecognitionBusy(true)
     try {
       const coords = target.geoFenceEnabled ? await getOptionalCoords() : {}
       const result = await attendanceService.verifyAttendanceWithFace({
-        sessionId:   target.id,
-        subjectId:   target.subject?._id || '',
-        secureToken: target.qrToken,
-        faceDescriptor,
+        sessionId:      target.id,
+        subjectId:      target.subject?._id || '',
+        challengeToken: target.challengeToken,
+        livenessProof,
         ...coords,
       })
       setLateEntry(result.data?.isLate || false)
@@ -331,7 +307,21 @@ export default function ScanQRPage() {
       const error = err as ApiError
       const msg = error.response?.data?.message || error.message || 'Facial recognition failed'
       toast({ title: 'Verification failed', description: msg, variant: 'destructive' })
-      setStep('verify-method')
+
+      // Rotate liveness actions for retry if challenge is still valid
+      try {
+        const refreshed = await attendanceService.retryFaceChallenge({
+          sessionId: target.id,
+          challengeToken: target.challengeToken,
+        })
+        if (refreshed?.livenessActions) {
+          setSession((prev) => prev ? { ...prev, livenessActions: refreshed.livenessActions } : prev)
+        }
+        setStep('verify-method')
+      } catch {
+        // Challenge expired or exhausted — require fresh QR scan
+        reset()
+      }
     } finally {
       setFacialRecognitionBusy(false)
     }
@@ -367,7 +357,7 @@ export default function ScanQRPage() {
               )}
               <div className="flex items-center justify-center gap-1.5 mt-3 text-xs text-violet-600">
                 <Fingerprint className="w-3.5 h-3.5" />
-                Verified via biometrics
+                Verified via {verificationMethod === 'face' ? 'live facial liveness' : 'registered biometric'}
               </div>
             </div>
             <div className="flex flex-col gap-2 w-full">
@@ -391,7 +381,7 @@ export default function ScanQRPage() {
       <div>
         <h2 className="text-xl font-bold">Mark Attendance</h2>
         <p className="text-sm text-muted-foreground">
-          Scan the QR code on your teacher's screen, or enter the session code manually
+          Scan the live QR code on your teacher's screen, or enter the rotating classroom code
         </p>
       </div>
 
@@ -418,8 +408,8 @@ export default function ScanQRPage() {
               <Keyboard className="w-7 h-7" />
             </div>
             <div className="text-center">
-              <p className="font-bold text-sm text-foreground">Enter Code</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Type session code</p>
+              <p className="font-bold text-sm text-foreground">Enter Live Code</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Rotating projector code</p>
             </div>
           </button>
         </div>
@@ -430,7 +420,7 @@ export default function ScanQRPage() {
         <Card>
           <CardContent className="py-14 flex flex-col items-center gap-3">
             <Loader2 className="w-10 h-10 text-primary animate-spin" />
-            <p className="text-sm text-muted-foreground">Validating session…</p>
+            <p className="text-sm text-muted-foreground">Validating live session…</p>
           </CardContent>
         </Card>
       )}
@@ -445,7 +435,7 @@ export default function ScanQRPage() {
                 className="text-xs text-muted-foreground hover:text-primary transition-colors"
                 onClick={() => setMode('manual')}
               >
-                Camera not working? Enter the code manually →
+                Camera not working? Enter the rotating classroom code →
               </button>
             </p>
             <Button variant="outline" className="w-full gap-2" onClick={reset}>
@@ -455,7 +445,7 @@ export default function ScanQRPage() {
         </Card>
       )}
 
-      {/* Manual code entry */}
+      {/* Manual rotating code entry */}
       {!session && !validating && mode === 'manual' && (
         <Card>
           <CardContent className="pt-6 space-y-5">
@@ -465,24 +455,25 @@ export default function ScanQRPage() {
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="session-code">Session Code</Label>
+              <Label htmlFor="classroom-code">Live Classroom Code</Label>
               <Input
-                id="session-code"
-                placeholder="e.g. CS301-AB3X"
-                value={sessionCode}
-                onChange={(e) => setSessionCode(e.target.value.toUpperCase())}
+                id="classroom-code"
+                placeholder="e.g. X7K9M2"
+                value={classroomCode}
+                onChange={(e) => setClassroomCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                maxLength={10}
                 className="text-center text-lg font-mono tracking-widest uppercase h-12"
-                onKeyDown={(e) => e.key === 'Enter' && sessionCode && findByCode()}
+                onKeyDown={(e) => e.key === 'Enter' && classroomCode && findByCode()}
                 autoFocus
               />
               <p className="text-xs text-muted-foreground text-center">
-                Enter the code shown on your teacher's screen
+                Enter the 6-character code currently displayed on the classroom projector (rotates every 15s)
               </p>
             </div>
             <Button
               variant="gradient"
               className="w-full gap-2"
-              disabled={!sessionCode.trim()}
+              disabled={!classroomCode.trim()}
               loading={validating}
               onClick={findByCode}
             >
@@ -495,7 +486,7 @@ export default function ScanQRPage() {
         </Card>
       )}
 
-      {/* ── Step 2: Biometric verification ─────────────────────────────── */}
+      {/* ── Step 2: Live Verification ───────────────────────────────────── */}
       {session && !showDone && (
         <Card>
           <CardContent className="pt-6 space-y-5">
@@ -506,31 +497,10 @@ export default function ScanQRPage() {
               <div className="space-y-4">
                 <div className="text-center py-2">
                   <p className="font-semibold text-base">Choose Verification Method</p>
-                  <p className="text-sm text-muted-foreground mt-1">Select how you want to verify your attendance</p>
+                  <p className="text-sm text-muted-foreground mt-1">Verify with live facial liveness or your pre-registered device</p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={() => {
-                      setVerificationMethod('biometric')
-                      if (user?.hasWebAuthn) {
-                        setStep('biometric')
-                        triggerBiometric()
-                      } else {
-                        setStep('registering')
-                      }
-                    }}
-                    className="flex flex-col items-center gap-2 p-4 rounded-2xl glass-card glass-card-hover border border-white/60 dark:border-white/[0.08] group"
-                  >
-                    <div className="w-12 h-12 rounded-xl bg-violet-500/10 text-violet-500 ring-1 ring-violet-500/20 flex items-center justify-center group-hover:scale-105 transition-all">
-                      <Fingerprint className="w-6 h-6" />
-                    </div>
-                    <div className="text-center">
-                      <p className="font-semibold text-xs text-foreground">Biometric</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">Fingerprint / Face ID</p>
-                    </div>
-                  </button>
-
                   <button
                     onClick={() => {
                       setVerificationMethod('face')
@@ -542,8 +512,30 @@ export default function ScanQRPage() {
                       <Eye className="w-6 h-6" />
                     </div>
                     <div className="text-center">
-                      <p className="font-semibold text-xs text-foreground">Facial Recognition</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">Verify with face</p>
+                      <p className="font-semibold text-xs text-foreground">Facial Liveness</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Live anti-spoof check</p>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setVerificationMethod('biometric')
+                      if (user?.hasWebAuthn) {
+                        setStep('biometric')
+                        triggerBiometric()
+                      } else {
+                        setMissingEnrollmentType('biometric')
+                        setStep('enroll-required')
+                      }
+                    }}
+                    className="flex flex-col items-center gap-2 p-4 rounded-2xl glass-card glass-card-hover border border-white/60 dark:border-white/[0.08] group"
+                  >
+                    <div className="w-12 h-12 rounded-xl bg-violet-500/10 text-violet-500 ring-1 ring-violet-500/20 flex items-center justify-center group-hover:scale-105 transition-all">
+                      <Fingerprint className="w-6 h-6" />
+                    </div>
+                    <div className="text-center">
+                      <p className="font-semibold text-xs text-foreground">Device Biometric</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Pre-registered device</p>
                     </div>
                   </button>
                 </div>
@@ -554,40 +546,29 @@ export default function ScanQRPage() {
               </div>
             )}
 
-            {/* Not registered yet — register first */}
-            {step === 'registering' && (
+            {/* Pre-enrollment required (prevents inline enrollment-and-verify bypass) */}
+            {step === 'enroll-required' && (
               <div className="space-y-4">
                 <div className="flex flex-col items-center gap-3 py-2 text-center">
-                  <div className="w-16 h-16 rounded-2xl bg-violet-500/10 flex items-center justify-center">
-                    <Fingerprint className="w-8 h-8 text-violet-500" />
+                  <div className="w-14 h-14 rounded-2xl bg-amber-500/10 flex items-center justify-center">
+                    <ShieldAlert className="w-7 h-7 text-amber-500" />
                   </div>
                   <div>
-                    <p className="font-semibold text-base">Register Your Biometric</p>
-                    <p className="text-sm text-muted-foreground mt-1 max-w-xs">
-                      AttendX requires biometric verification to mark attendance.
-                      Register your fingerprint or Face ID once — takes 5 seconds.
+                    <p className="font-semibold text-base">
+                      {missingEnrollmentType === 'face' ? 'Face Profile Not Enrolled' : 'Device Not Registered'}
                     </p>
-                  </div>
-                  <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-200 dark:border-amber-900/50 text-left max-w-xs">
-                    <ShieldAlert className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-                    <p className="text-xs text-amber-700 dark:text-amber-400">
-                      Your biometric data never leaves your device. Only a cryptographic key is stored on the server.
+                    <p className="text-xs text-muted-foreground mt-1 max-w-xs">
+                      {missingEnrollmentType === 'face'
+                        ? 'For anti-proxy security, face profiles must be enrolled and locked in your Profile page before marking attendance.'
+                        : 'For anti-proxy security, device biometrics must be pre-registered on your own device in Profile before marking attendance.'}
                     </p>
                   </div>
                 </div>
-
-                <Button
-                  variant="gradient"
-                  className="w-full gap-2 h-12"
-                  loading={registerBusy}
-                  onClick={registerThenVerify}
-                >
-                  <Fingerprint className="w-5 h-5" />
-                  Register & Mark Attendance
+                <Button variant="gradient" className="w-full" onClick={() => navigate('/student/profile')}>
+                  Go to Profile to Enroll
                 </Button>
-
-                <Button variant="ghost" className="w-full gap-2" onClick={reset}>
-                  <ArrowLeft className="w-4 h-4" /> Back
+                <Button variant="ghost" className="w-full gap-2 text-xs" onClick={() => setStep('verify-method')}>
+                  <ArrowLeft className="w-3.5 h-3.5" /> Back to Methods
                 </Button>
               </div>
             )}
@@ -608,7 +589,7 @@ export default function ScanQRPage() {
                   </div>
                   <div>
                     <p className="font-semibold text-base">
-                      {biometricBusy ? 'Waiting for biometric…' : 'Verify with Biometrics'}
+                      {biometricBusy ? 'Waiting for biometric…' : 'Verify with Registered Device'}
                     </p>
                     <p className="text-sm text-muted-foreground mt-1">
                       {biometricBusy
@@ -636,41 +617,12 @@ export default function ScanQRPage() {
               </div>
             )}
 
-            {/* Facial Recognition Enrollment (first-time inline setup) */}
-            {step === 'face-register' && (
-              <div className="space-y-4">
-                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-300">
-                  No face profile found on your account yet. Enroll once now (3 frames) to mark attendance.
-                </div>
-                <FacialRecognitionCapture
-                  mode="register"
-                  isLoading={facialRecognitionBusy}
-                  onCancel={() => {
-                    setFacialRecognitionBusy(false)
-                    setStep('verify-method')
-                  }}
-                  onSuccess={async (descriptor) => {
-                    setFacialRecognitionBusy(true)
-                    try {
-                      await attendanceService.registerFace(descriptor)
-                      updateUser({ hasFaceDescriptor: true })
-                      toast({ title: 'Face enrolled!', description: 'Marking your attendance now…', variant: 'success' })
-                      await handleFaceVerified(descriptor)
-                    } catch (err) {
-                      const error = err as ApiError
-                      toast({ title: 'Enrollment failed', description: error.response?.data?.message || 'Could not enroll face.', variant: 'destructive' })
-                      setFacialRecognitionBusy(false)
-                    }
-                  }}
-                />
-              </div>
-            )}
-
-            {/* Facial Recognition */}
+            {/* Facial Recognition with active liveness */}
             {step === 'face' && (
               <div className="space-y-4">
                 <FacialRecognitionCapture
                   mode="verify"
+                  livenessActions={session.livenessActions}
                   onSuccess={handleFaceVerified}
                   onCancel={() => {
                     setFacialRecognitionBusy(false)

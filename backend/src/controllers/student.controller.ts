@@ -35,9 +35,10 @@ export const getMyAttendance = async (req: AuthRequest, res: Response): Promise<
       })
       .sort({ timestamp: -1 });
 
-    // Group by subject
+    // Group verified records by subject for counts
+    const verifiedRecords = records.filter(r => r.verificationStatus === 'verified');
     const subjectMap = new Map<string, { subjectName: string; subjectCode: string; present: number; records: any[] }>();
-    records.forEach(record => {
+    verifiedRecords.forEach(record => {
       const subject = record.subjectId as any;
       if (!subject || !subject._id) return;
       const key = subject._id.toString();
@@ -60,7 +61,7 @@ export const getMyAttendance = async (req: AuthRequest, res: Response): Promise<
     res.json({
       success: true,
       data: {
-        totalPresent: records.length,
+        totalPresent: verifiedRecords.length,
         bySubject,
         recentRecords: records.slice(0, 10),
       },
@@ -91,6 +92,7 @@ export const getDashboard = async (req: AuthRequest, res: Response): Promise<voi
     const records = await AttendanceRecord.find({
       studentId: req.user!.userId,
       subjectId: { $in: subjectIds },
+      verificationStatus: 'verified',
     });
 
     const totalSessions = await AttendanceSession.countDocuments({

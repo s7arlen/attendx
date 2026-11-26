@@ -26,6 +26,7 @@ const registerSchema = z.object({
       message: 'USN must be in format 4CB25CS001',
     }),
   phone: z.string().max(30).optional(),
+  teacherInviteCode: z.string().max(100).optional(),
 });
 
 const loginSchema = z.object({
@@ -41,7 +42,16 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const { name, email, password, role, department, year, section, rollNumber, phone } = validation.data;
+    const { name, email, password, role, department, year, section, rollNumber, phone, teacherInviteCode } = validation.data;
+
+    const requiredTeacherCode = process.env.TEACHER_INVITE_CODE?.trim();
+    if (role === 'teacher' && requiredTeacherCode && teacherInviteCode?.trim() !== requiredTeacherCode) {
+      res.status(403).json({
+        success: false,
+        message: 'Valid institutional teacher invite code is required for teacher registration.',
+      });
+      return;
+    }
 
     const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
     if (existingUser) {
@@ -150,7 +160,9 @@ export const login = async (req: Request, res: Response): Promise<void> => {
           avatar: user.avatar,
           isEmailVerified: !!user.isEmailVerified,
           hasWebAuthn: Array.isArray(user.webauthnCredentials) && user.webauthnCredentials.length > 0,
+          webauthnLocked: !!user.webauthnLocked,
           hasFaceDescriptor: !!user.faceDescriptor?.descriptor?.length,
+          faceLocked: !!user.faceDescriptor?.locked,
         },
         accessToken,
         refreshToken,
@@ -242,7 +254,14 @@ export const updateProfile = async (req: AuthRequest, res: Response): Promise<vo
       res.status(400).json({ success: false, errors: validation.error.issues });
       return;
     }
-    const allowed = validation.data;
+    const allowed: Record<string, unknown> = { ...validation.data };
+    // Prevent students from self-modifying institutional enrollment/identity attributes used by strict & invite checks
+    if (req.user!.role === 'student') {
+      delete allowed.department;
+      delete allowed.year;
+      delete allowed.section;
+      delete allowed.rollNumber;
+    }
     const user = await User.findByIdAndUpdate(
       req.user!.userId,
       { $set: allowed },

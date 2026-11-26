@@ -354,6 +354,7 @@ export const getStudentAcademicProfile = async (req: AuthRequest, res: Response)
       const present = await AttendanceRecord.countDocuments({
         studentId: targetId,
         subjectId: sub._id,
+        verificationStatus: 'verified',
       });
       return {
         subjectId: sub._id,
@@ -430,7 +431,7 @@ export async function triggerRiskAssessment(studentId: string): Promise<void> {
     let totalSessions = 0, totalPresent = 0;
     for (const sub of subjects) {
       const sessions = await AttendanceSession.countDocuments({ subjectId: sub._id, status: { $in: ['ended', 'expired'] } });
-      const present = await AttendanceRecord.countDocuments({ studentId, subjectId: sub._id });
+      const present = await AttendanceRecord.countDocuments({ studentId, subjectId: sub._id, verificationStatus: 'verified' });
       totalSessions += sessions;
       totalPresent += present;
     }

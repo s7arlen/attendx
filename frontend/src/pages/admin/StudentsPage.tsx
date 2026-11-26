@@ -126,6 +126,30 @@ export default function StudentsPage() {
     },
   })
 
+  const resetFaceMutation = useMutation({
+    mutationFn: adminService.resetStudentFace,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-students'] })
+      toast({ title: 'Face enrollment unlocked', description: 'Student can perform one live face enrollment.', variant: 'success' })
+    },
+    onError: (err) => {
+      const error = err as ApiError;
+      toast({ title: 'Failed', description: error.response?.data?.message, variant: 'destructive' });
+    },
+  })
+
+  const resetBiometricsMutation = useMutation({
+    mutationFn: adminService.resetStudentBiometrics,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-students'] })
+      toast({ title: 'Biometric devices reset', description: 'Student can register a new device.', variant: 'success' })
+    },
+    onError: (err) => {
+      const error = err as ApiError;
+      toast({ title: 'Failed', description: error.response?.data?.message, variant: 'destructive' });
+    },
+  })
+
   const onSubmit = (d: StudentForm) => {
     if (editTarget) updateMutation.mutate({ id: editTarget.id, data: d })
     else createMutation.mutate(d)
@@ -423,6 +447,23 @@ export default function StudentsPage() {
                 >Deactivate Account</Button>
               </div>
             )}
+
+            <div className="rounded-lg border border-border p-3 space-y-2">
+              <p className="text-sm font-medium">Biometric & Face Reset</p>
+              <p className="text-xs text-muted-foreground">Unlock self-enrollment if a student switched devices or needs re-verification.</p>
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <Button
+                  variant="outline" size="sm"
+                  loading={resetFaceMutation.isPending}
+                  onClick={() => deleteTarget && resetFaceMutation.mutate(deleteTarget.id)}
+                >Reset Face</Button>
+                <Button
+                  variant="outline" size="sm"
+                  loading={resetBiometricsMutation.isPending}
+                  onClick={() => deleteTarget && resetBiometricsMutation.mutate(deleteTarget.id)}
+                >Reset WebAuthn</Button>
+              </div>
+            </div>
 
             <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-1">
               <p className="text-sm font-medium text-destructive">Delete Permanently</p>

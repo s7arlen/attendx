@@ -47,10 +47,11 @@ async function checkAndAlert() {
 
         if (totalSessions === 0) continue;
 
-        // Sessions this student attended
+        // Sessions this student attended (verified only)
         const present = await AttendanceRecord.countDocuments({
           studentId: student._id,
           subjectId: subject._id,
+          verificationStatus: 'verified',
         });
 
         const percentage = Math.round((present / totalSessions) * 100);

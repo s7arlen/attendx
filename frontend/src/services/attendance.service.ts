@@ -1,5 +1,5 @@
 import api from '@/lib/axios';
-import { AttendanceSession } from '@/types';
+import { AttendanceSession, LivenessProof } from '@/types';
 
 export const attendanceService = {
   // Teacher
@@ -17,7 +17,7 @@ export const attendanceService = {
     return res.data;
   },
 
-  refreshQR: async (sessionId: string): Promise<{ qrCodeData: string; qrToken: string; qrRefreshSeconds?: number; refreshedAt: string }> => {
+  refreshQR: async (sessionId: string): Promise<{ qrCodeData: string; dynamicCode: string; qrRefreshSeconds?: number; refreshedAt: string }> => {
     const res = await api.post(`/attendance/refresh-qr/${sessionId}`);
     return res.data.data;
   },
@@ -33,13 +33,31 @@ export const attendanceService = {
   },
 
   // Student
-  findSessionByCode: async (sessionCode: string) => {
-    const res = await api.get(`/attendance/session/${encodeURIComponent(sessionCode)}`);
+  findSessionByCode: async (dynamicCode: string) => {
+    const res = await api.get(`/attendance/session/${encodeURIComponent(dynamicCode)}`);
     return res.data.data;
   },
 
   validateQR: async (data: { sessionId: string; secureToken: string }) => {
     const res = await api.post('/attendance/validate-qr', data);
+    return res.data.data;
+  },
+
+  beginOfflineSync: async (data: { sessionId: string; qrToken: string }) => {
+    const res = await api.post('/attendance/sync-offline/begin', data);
+    return res.data.data;
+  },
+
+  syncOfflineAttendance: async (records: Array<{
+    sessionId: string;
+    qrToken: string;
+    timestamp: string;
+    challengeToken: string;
+    livenessProof: LivenessProof;
+    latitude?: number;
+    longitude?: number;
+  }>) => {
+    const res = await api.post('/attendance/sync-offline', { records });
     return res.data.data;
   },
 
@@ -69,16 +87,21 @@ export const attendanceService = {
   },
 
   // Facial Recognition
-  registerFace: async (faceDescriptor: number[]) => {
-    const res = await api.post('/attendance/face/register', { faceDescriptor });
+  registerFace: async (livenessProof: LivenessProof) => {
+    const res = await api.post('/attendance/face/register', { livenessProof });
     return res.data;
+  },
+
+  retryFaceChallenge: async (data: { sessionId: string; challengeToken: string }) => {
+    const res = await api.post('/attendance/face/retry-challenge', data);
+    return res.data.data;
   },
 
   verifyAttendanceWithFace: async (data: {
     sessionId: string;
     subjectId: string;
-    secureToken: string;
-    faceDescriptor: number[];
+    challengeToken: string;
+    livenessProof: LivenessProof;
     latitude?: number;
     longitude?: number;
   }) => {

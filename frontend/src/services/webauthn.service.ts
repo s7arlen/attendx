@@ -16,7 +16,12 @@ export const webauthnService = {
   /** Check whether the current user has any credentials registered */
   getStatus: async () => {
     const res = await api.get('/auth/webauthn/status');
-    return res.data.data as { registered: boolean; count: number; devices: { credentialId: string; deviceType: string; registeredAt: string }[] };
+    return res.data.data as {
+      registered: boolean;
+      locked?: boolean;
+      count: number;
+      devices: { id: string; credentialId: string; deviceType: string; registeredAt: string }[];
+    };
   },
 
   /** Register this device's biometric with the server */
@@ -40,11 +45,11 @@ export const webauthnService = {
 
   /** Verify attendance using biometric (replaces password) */
   verifyAttendanceWithBiometric: async (params: {
-    sessionId:   string;
-    subjectId:   string;
-    secureToken: string;
-    latitude?:   number;
-    longitude?:  number;
+    sessionId:      string;
+    subjectId:      string;
+    challengeToken: string;
+    latitude?:      number;
+    longitude?:     number;
   }) => {
     // 1. Get a challenge tied to this student
     const options = await webauthnService.beginAuthentication();

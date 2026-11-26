@@ -4,6 +4,7 @@ import {
   getDashboardStats,
   getTeachers, createTeacher, updateTeacher, deleteTeacher, activateTeacher, hardDeleteTeacher,
   getStudents, createStudent, updateStudent, deleteStudent, activateStudent, hardDeleteStudent,
+  resetStudentFace, resetStudentBiometrics,
   getSubjects, createSubject, updateSubject, deleteSubject, hardDeleteSubject, searchSubjects,
   getTimetables, createTimetable, updateTimetable, deleteTimetable,
   getAdminReports,
@@ -33,6 +34,8 @@ router.put('/students/:id', updateStudent);
 router.patch('/students/:id/activate', activateStudent);
 router.delete('/students/:id', deleteStudent);
 router.delete('/students/:id/permanent', hardDeleteStudent);
+router.post('/students/:id/reset-face', resetStudentFace);
+router.post('/students/:id/reset-biometrics', resetStudentBiometrics);
 
 // Subjects
 router.get('/subjects/search', searchSubjects);

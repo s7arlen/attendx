@@ -54,3 +54,42 @@ export function getSecondsUntilNextRefresh(
   const elapsedSeconds = Math.max(0, Math.floor((nowMs - lastMs) / 1000));
   return Math.max(1, refreshSeconds - elapsedSeconds);
 }
+
+export interface SessionWindowState {
+  status: string;
+  expiryTime: Date | string;
+  gracePeriodMinutes?: number | null;
+}
+
+export function evaluateSessionWindow(
+  session: SessionWindowState | null | undefined,
+  nowMs = Date.now()
+): { valid: boolean; isLate: boolean; effectiveExpiryMs: number; reason?: string } {
+  if (!session) {
+    return { valid: false, isLate: false, effectiveExpiryMs: 0, reason: 'Session not found' };
+  }
+  if (session.status !== 'active') {
+    return {
+      valid: false,
+      isLate: false,
+      effectiveExpiryMs: 0,
+      reason: session.status === 'ended' ? 'Session was ended by teacher' : 'Session is not active',
+    };
+  }
+  const expiryMs = new Date(session.expiryTime).getTime();
+  const graceMs = Math.max(0, Number(session.gracePeriodMinutes || 0)) * 60_000;
+  const effectiveExpiryMs = expiryMs + graceMs;
+  if (!Number.isFinite(effectiveExpiryMs) || nowMs > effectiveExpiryMs) {
+    return { valid: false, isLate: false, effectiveExpiryMs, reason: 'Session has expired' };
+  }
+  const isLate = nowMs > expiryMs;
+  return { valid: true, isLate, effectiveExpiryMs };
+}
+
+export function isValidDynamicClassroomCode(
+  session: { dynamicCode?: string | null },
+  incomingCode: string
+): boolean {
+  if (!session.dynamicCode || !incomingCode || typeof incomingCode !== 'string') return false;
+  return session.dynamicCode.trim().toUpperCase() === incomingCode.trim().toUpperCase();
+}

@@ -4,14 +4,23 @@ export type SessionStatus = 'active' | 'ended' | 'expired';
 export type SessionType = 'class' | 'seminar' | 'workshop' | 'event' | 'lab';
 export type VerificationMode = 'strict' | 'open' | 'invite';
 
+export interface IIssuedQrToken {
+  hash: string;
+  issuedAt: Date;
+}
+
 export interface IAttendanceSession extends Document {
   _id: mongoose.Types.ObjectId;
   subjectId: mongoose.Types.ObjectId;
   teacherId: mongoose.Types.ObjectId;
   sessionCode: string;
+  dynamicCode: string;
+  previousDynamicCode?: string | null;
+  projectorSecret: string;
   passwordCode?: string;
   qrToken: string;
   qrCodeData: string;
+  issuedTokenHashes: IIssuedQrToken[];
   startTime: Date;
   expiryTime: Date;
   status: SessionStatus;
@@ -41,18 +50,25 @@ export interface IAttendanceSession extends Document {
 
 const AttendanceSessionSchema = new Schema<IAttendanceSession>(
   {
-    subjectId:    { type: Schema.Types.ObjectId, ref: 'Subject', required: true },
-    teacherId:    { type: Schema.Types.ObjectId, ref: 'User', required: true },
-    sessionCode:  { type: String, required: true, unique: true },
-    passwordCode: { type: String, default: null },
-    qrToken:      { type: String, required: true, unique: true },
-    qrCodeData:   { type: String, required: true },
-    startTime:    { type: Date, required: true, default: Date.now },
-    expiryTime:   { type: Date, required: true },
-    status:       { type: String, enum: ['active', 'ended', 'expired'], default: 'active' },
-    duration:     { type: Number, default: 15 },
-    totalPresent: { type: Number, default: 0 },
-    autoCreated:  { type: Boolean, default: false },
+    subjectId:           { type: Schema.Types.ObjectId, ref: 'Subject', required: true },
+    teacherId:           { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    sessionCode:         { type: String, required: true, unique: true },
+    dynamicCode:         { type: String, required: true },
+    previousDynamicCode: { type: String, default: null },
+    projectorSecret:     { type: String, required: true },
+    passwordCode:        { type: String, default: null },
+    qrToken:             { type: String, required: true, unique: true },
+    qrCodeData:          { type: String, required: true },
+    issuedTokenHashes:   {
+      type: [{ hash: { type: String, required: true }, issuedAt: { type: Date, required: true } }],
+      default: [],
+    },
+    startTime:           { type: Date, required: true, default: Date.now },
+    expiryTime:          { type: Date, required: true },
+    status:              { type: String, enum: ['active', 'ended', 'expired'], default: 'active' },
+    duration:            { type: Number, default: 15 },
+    totalPresent:        { type: Number, default: 0 },
+    autoCreated:         { type: Boolean, default: false },
     sessionType: {
       type: String,
       enum: ['class', 'seminar', 'workshop', 'event', 'lab'],
@@ -79,6 +95,6 @@ const AttendanceSessionSchema = new Schema<IAttendanceSession>(
 );
 
 AttendanceSessionSchema.index({ subjectId: 1, teacherId: 1, status: 1 });
-AttendanceSessionSchema.index({ sessionCode: 1 });
+AttendanceSessionSchema.index({ dynamicCode: 1, status: 1 });
 
 export const AttendanceSession = mongoose.model<IAttendanceSession>('AttendanceSession', AttendanceSessionSchema);

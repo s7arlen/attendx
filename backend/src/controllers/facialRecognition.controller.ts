@@ -1,55 +1,46 @@
 /**
  * Facial Recognition Controller
- * Handles face registration and verification for attendance
+ * Handles liveness-verified face enrollment and anti-spoofing attendance verification.
  */
 
 import { Response } from 'express';
+import { Server } from 'socket.io';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { User } from '../models/User.model';
 import { AttendanceSession } from '../models/AttendanceSession.model';
 import { AttendanceRecord } from '../models/AttendanceRecord.model';
+import { AttendanceChallenge } from '../models/AttendanceChallenge.model';
 import { Subject } from '../models/Subject.model';
 import { createAuditLog, getClientIp } from '../utils/auditLogger';
 import { isValidObjectId, checkGeoFence } from '../utils/security';
-import { isValidSessionQrToken } from '../utils/qrSession';
+import { evaluateSessionWindow } from '../utils/qrSession';
+import { emitToSession } from '../config/socket';
+import {
+  calculateEuclideanDistance,
+  evaluateFaceMatch,
+  LivenessAction,
+  pickLivenessActions,
+  verifyLivenessProof,
+} from '../utils/faceSecurity';
+import {
+  checkStudentSessionEligibility,
+  consumeChallengeAtomically,
+  detectSameDeviceCollusion,
+  getNormalizedDeviceId,
+  incrementChallengeFailure,
+  MAX_CHALLENGE_FAILED_ATTEMPTS,
+  validateActiveChallenge,
+} from '../utils/attendanceHelper';
 
-const isValidDescriptor = (value: unknown): value is number[] =>
-  Array.isArray(value) &&
-  value.length === 128 &&
-  value.every((entry) => typeof entry === 'number' && Number.isFinite(entry));
-
-/**
- * Calculate Euclidean distance between two face descriptors
- */
-const calculateDistance = (descriptor1: number[], descriptor2: number[]): number => {
-  if (descriptor1.length !== descriptor2.length) {
-    throw new Error('Descriptors must have the same length');
-  }
-
-  let sumSquaredDiff = 0;
-  for (let i = 0; i < descriptor1.length; i++) {
-    const diff = descriptor1[i] - descriptor2[i];
-    sumSquaredDiff += diff * diff;
-  }
-
-  return Math.sqrt(sumSquaredDiff);
-};
+const REGISTRATION_LIVENESS_ACTIONS: LivenessAction[] = ['blink', 'turn_left'];
+const DUPLICATE_FACE_DISTANCE_THRESHOLD = 0.42;
 
 /**
- * Register face descriptor for a user
- * Called when student chooses facial recognition for first time
+ * Register face descriptor for a user (one-time locked enrollment with liveness + cross-user uniqueness check).
  */
 export const registerFace = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { faceDescriptor } = req.body;
-
-    if (!isValidDescriptor(faceDescriptor)) {
-      res.status(400).json({
-        success: false,
-        message: 'Invalid face descriptor. Must be an array of 128 finite numbers.',
-      });
-      return;
-    }
+    const { livenessProof } = req.body;
 
     const user = await User.findById(req.user!.userId);
     if (!user) {
@@ -57,12 +48,58 @@ export const registerFace = async (req: AuthRequest, res: Response): Promise<voi
       return;
     }
 
-    // Store the face descriptor
-    user.faceDescriptor = {
-      descriptor: faceDescriptor,
-      capturedAt: new Date(),
-    };
+    if (user.faceDescriptor?.descriptor?.length && user.faceDescriptor.locked !== false) {
+      res.status(403).json({
+        success: false,
+        message: 'Face profile is locked after initial enrollment. Contact an administrator to reset it.',
+      });
+      return;
+    }
 
+    const livenessResult = verifyLivenessProof(REGISTRATION_LIVENESS_ACTIONS, livenessProof);
+    if (!livenessResult.valid || !livenessResult.primaryDescriptor) {
+      res.status(400).json({
+        success: false,
+        message: livenessResult.reason || 'Liveness verification failed during face enrollment.',
+      });
+      return;
+    }
+
+    const newDescriptor = livenessResult.primaryDescriptor;
+
+    // Cross-user uniqueness check: prevent two accounts from enrolling the same face
+    const otherUsers = await User.find({
+      _id: { $ne: user._id },
+      'faceDescriptor.descriptor.0': { $exists: true },
+    }).select('_id rollNumber email faceDescriptor.descriptor');
+
+    for (const other of otherUsers) {
+      const otherDesc = other.faceDescriptor?.descriptor;
+      if (!otherDesc || otherDesc.length !== 128) continue;
+      const dist = calculateEuclideanDistance(newDescriptor, otherDesc);
+      if (dist < DUPLICATE_FACE_DISTANCE_THRESHOLD) {
+        await createAuditLog(
+          req.user!.userId,
+          'DUPLICATE_FACE_ENROLLMENT_BLOCKED',
+          'User',
+          user._id.toString(),
+          { matchedUserId: other._id.toString(), distance: Number(dist.toFixed(3)) },
+          getClientIp(req)
+        );
+        res.status(409).json({
+          success: false,
+          message: 'This face matches an already enrolled account. Contact an administrator if this is an error.',
+        });
+        return;
+      }
+    }
+
+    user.faceDescriptor = {
+      descriptor: newDescriptor,
+      capturedAt: new Date(),
+      locked: true,
+      recentVerificationHashes: [],
+    };
     await user.save();
 
     await createAuditLog(
@@ -70,14 +107,14 @@ export const registerFace = async (req: AuthRequest, res: Response): Promise<voi
       'REGISTER_FACE',
       'User',
       user._id.toString(),
-      { timestamp: new Date().toISOString() },
+      { timestamp: new Date().toISOString(), livenessActions: REGISTRATION_LIVENESS_ACTIONS },
       getClientIp(req)
     );
 
     res.json({
       success: true,
-      message: 'Face registered successfully',
-      data: { hasFaceDescriptor: true },
+      message: 'Face enrolled and locked successfully',
+      data: { hasFaceDescriptor: true, faceLocked: true },
     });
   } catch (error: any) {
     const message = process.env.NODE_ENV === 'production' ? 'Failed to register face' : error.message;
@@ -86,50 +123,70 @@ export const registerFace = async (req: AuthRequest, res: Response): Promise<voi
 };
 
 /**
- * Verify attendance using facial recognition
+ * Rotate liveness actions on an active scan challenge after a failed capture attempt
+ */
+export const retryFaceChallenge = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { sessionId, challengeToken } = req.body;
+    if (!isValidObjectId(sessionId)) {
+      res.status(400).json({ success: false, message: 'Invalid session ID' });
+      return;
+    }
+    const deviceId = getNormalizedDeviceId(req);
+    const check = await validateActiveChallenge(challengeToken, req.user!.userId, sessionId, deviceId);
+    if (!check.valid || !check.challenge) {
+      res.status(check.status || 400).json({ success: false, message: check.message });
+      return;
+    }
+
+    const nextActions = pickLivenessActions();
+    check.challenge.livenessActions = nextActions;
+    await check.challenge.save();
+
+    res.json({
+      success: true,
+      data: {
+        livenessActions: nextActions,
+        remainingAttempts: Math.max(0, MAX_CHALLENGE_FAILED_ATTEMPTS - check.challenge.failedAttempts),
+      },
+    });
+  } catch {
+    res.status(500).json({ success: false, message: 'Failed to refresh liveness challenge' });
+  }
+};
+
+/**
+ * Verify attendance using server-issued liveness challenge + multi-frame facial recognition
  */
 export const verifyAttendanceWithFace = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { sessionId, subjectId, secureToken, faceDescriptor } = req.body;
-
-    if (!sessionId || !secureToken || !faceDescriptor || typeof secureToken !== 'string') {
-      res.status(400).json({ success: false, message: 'Missing required fields' });
-      return;
-    }
+    const { sessionId, subjectId, challengeToken, livenessProof } = req.body;
 
     if (!isValidObjectId(sessionId)) {
       res.status(400).json({ success: false, message: 'Invalid session ID' });
       return;
     }
 
-    if (!isValidDescriptor(faceDescriptor)) {
-      res.status(400).json({
-        success: false,
-        message: 'Invalid face descriptor. Must be an array of 128 finite numbers.',
-      });
-      return;
-    }
+    const deviceId = getNormalizedDeviceId(req);
 
-    // 1 — Validate session
-    const session = await AttendanceSession.findById(sessionId);
-    if (!session) {
-      res.status(400).json({ success: false, message: 'Session not found' });
-      return;
-    }
-
-    // Check if session is active or within grace period
-    const expiry = new Date(
-      session.expiryTime.getTime() + (session.gracePeriodMinutes || 0) * 60 * 1000
+    // 1 — Validate user-bound, single-use challenge
+    const challengeCheck = await validateActiveChallenge(
+      challengeToken,
+      req.user!.userId,
+      sessionId,
+      deviceId
     );
-    const isSessionValid = session.status === 'active' || new Date() <= expiry;
-
-    if (!isSessionValid) {
-      res.status(400).json({ success: false, message: 'Session is not active or has expired' });
+    if (!challengeCheck.valid || !challengeCheck.challenge) {
+      res.status(challengeCheck.status || 400).json({ success: false, message: challengeCheck.message });
       return;
     }
+    const challenge = challengeCheck.challenge;
 
-    if (!isValidSessionQrToken(session, secureToken, true)) {
-      res.status(400).json({ success: false, message: 'Invalid or expired QR code' });
+    // 2 — Validate session state & time window strictly (status === 'active' && now <= effectiveExpiry)
+    const session = await AttendanceSession.findById(sessionId);
+    const windowCheck = evaluateSessionWindow(session);
+    if (!session || !windowCheck.valid) {
+      res.status(400).json({ success: false, message: windowCheck.reason || 'Session is not active or has expired' });
       return;
     }
 
@@ -139,7 +196,7 @@ export const verifyAttendanceWithFace = async (req: AuthRequest, res: Response):
       return;
     }
 
-    // 2 — Duplicate check
+    // 3 — Duplicate & same-device collusion checks
     const existingRecord = await AttendanceRecord.findOne({
       studentId: req.user!.userId,
       sessionId,
@@ -149,46 +206,85 @@ export const verifyAttendanceWithFace = async (req: AuthRequest, res: Response):
       return;
     }
 
-    // 3 — Retrieve user and verify face
+    const collusion = await detectSameDeviceCollusion(req, sessionId, req.user!.userId, deviceId);
+    if (collusion.colluding) {
+      res.status(403).json({ success: false, message: collusion.message });
+      return;
+    }
+
+    // 4 — Retrieve enrolled face profile
     const user = await User.findById(req.user!.userId);
-    if (!user || !user.faceDescriptor?.descriptor) {
+    if (!user || !user.faceDescriptor?.descriptor?.length) {
       res.status(400).json({
         success: false,
-        message: 'No face descriptor registered. Please register your face first.',
+        message: 'No enrolled face profile found. Please enroll your face in Profile before marking attendance.',
       });
       return;
     }
 
-    // Compare face descriptors
-    const distance = calculateDistance(faceDescriptor, user.faceDescriptor.descriptor);
-    const threshold = parseFloat(process.env.FACE_SIMILARITY_THRESHOLD || '0.65'); // Configurable threshold
-    const similarity = Math.max(0, 1 - distance / 0.6);
+    // 5 — Verify randomized active liveness proof
+    const livenessResult = verifyLivenessProof(challenge.livenessActions, livenessProof);
+    if (!livenessResult.valid || !livenessResult.primaryDescriptor) {
+      const attempts = await incrementChallengeFailure(challenge._id.toString());
+      await createAuditLog(
+        req.user!.userId,
+        'LIVENESS_CHECK_FAILED',
+        'AttendanceSession',
+        sessionId,
+        { reason: livenessResult.reason, attempts },
+        getClientIp(req)
+      ).catch(() => {});
+      res.status(400).json({
+        success: false,
+        message: livenessResult.reason || 'Liveness verification failed. Please complete the on-screen actions live.',
+      });
+      return;
+    }
 
-    if (similarity < threshold) {
+    // 6 — Compare live baseline descriptor against enrolled descriptor & reject replays
+    const match = evaluateFaceMatch(
+      livenessResult.primaryDescriptor,
+      user.faceDescriptor.descriptor,
+      user.faceDescriptor.recentVerificationHashes || []
+    );
+
+    if (match.isReplay) {
+      await incrementChallengeFailure(challenge._id.toString());
+      await createAuditLog(
+        req.user!.userId,
+        'FACE_REPLAY_DETECTED',
+        'AttendanceSession',
+        sessionId,
+        { distance: Number(match.distance.toFixed(4)) },
+        getClientIp(req)
+      ).catch(() => {});
       res.status(401).json({
         success: false,
-        message: 'Face verification failed. Please try again.',
-        data: { similarity: similarity.toFixed(2), threshold, required: threshold }, // Return scores for debugging
+        message: 'Replayed or static face capture detected. Please look live at the camera and retry.',
       });
       return;
     }
 
-    // 4 — Record attendance
-    const subject = await Subject.findById(session.subjectId);
-    const student = await User.findById(req.user!.userId);
-
-    if (!subject || !student) {
-      res.status(404).json({ success: false, message: 'Subject or student not found' });
+    if (!match.matched) {
+      await incrementChallengeFailure(challenge._id.toString());
+      res.status(401).json({
+        success: false,
+        message: 'Face verification failed. Please ensure good lighting and retry.',
+      });
       return;
     }
 
-    // Grace period check
-    const effectiveExpiry = new Date(
-      session.expiryTime.getTime() + (session.gracePeriodMinutes || 0) * 60 * 1000
-    );
-    const isLate = session.status !== 'active' && new Date() <= effectiveExpiry;
+    // 7 — Eligibility & capacity check
+    const subject = await Subject.findById(session.subjectId);
+    const eligibility = checkStudentSessionEligibility(session, user, subject);
+    if (!eligibility.allowed || !subject) {
+      res.status(eligibility.message === 'Subject not found' ? 404 : 403).json({
+        success: false,
+        message: eligibility.message,
+      });
+      return;
+    }
 
-    // Capacity check
     if (session.capacity && session.totalPresent >= session.capacity) {
       res.status(400).json({
         success: false,
@@ -197,31 +293,20 @@ export const verifyAttendanceWithFace = async (req: AuthRequest, res: Response):
       return;
     }
 
-    // Verification mode check
-    if (session.verificationMode === 'strict') {
-      if (
-        student.department !== subject.department ||
-        student.year !== subject.year ||
-        student.section !== subject.section
-      ) {
-        res.status(403).json({
-          success: false,
-          message: 'You are not enrolled in this class section',
-        });
-        return;
-      }
-    } else if (session.verificationMode === 'invite') {
-      const roll = student.rollNumber?.toUpperCase() || '';
-      if (!session.inviteList.includes(roll)) {
-        res.status(403).json({
-          success: false,
-          message: 'You are not on the invite list for this session',
-        });
-        return;
-      }
+    // 8 — Consume challenge atomically to prevent concurrent double-submission
+    const consumed = await consumeChallengeAtomically(challenge._id.toString());
+    if (!consumed) {
+      res.status(409).json({ success: false, message: 'Verification challenge already consumed.' });
+      return;
     }
 
-    // Create attendance record
+    // Save recent descriptor hash (keep latest 10) to block cross-session descriptor replay
+    const prevHashes = user.faceDescriptor.recentVerificationHashes || [];
+    user.faceDescriptor.recentVerificationHashes = [...prevHashes.slice(-9), match.liveHash];
+    await user.save();
+
+    const isLate = windowCheck.isLate;
+
     const record = await AttendanceRecord.create({
       studentId: req.user!.userId,
       sessionId: session._id,
@@ -231,10 +316,29 @@ export const verifyAttendanceWithFace = async (req: AuthRequest, res: Response):
       verificationMethod: 'facial_recognition',
       isLate,
       ipAddress: getClientIp(req),
+      deviceId: deviceId || undefined,
+      livenessPassed: true,
+      livenessActions: challenge.livenessActions,
+      faceConfidence: Number(match.similarity.toFixed(3)),
     });
 
-    // Atomic increment
     await AttendanceSession.findByIdAndUpdate(sessionId, { $inc: { totalPresent: 1 } });
+    const updatedSession = await AttendanceSession.findById(sessionId).select('totalPresent');
+
+    const io: Server = req.app.get('io');
+    if (io) {
+      emitToSession(io, sessionId, 'attendance:marked', {
+        studentId: user._id,
+        studentName: user.name,
+        rollNumber: user.rollNumber,
+        year: user.year,
+        section: user.section,
+        isLate,
+        timestamp: record.timestamp,
+        totalPresent: updatedSession?.totalPresent ?? session.totalPresent + 1,
+        method: 'facial_recognition',
+      });
+    }
 
     await createAuditLog(
       req.user!.userId,
@@ -244,7 +348,8 @@ export const verifyAttendanceWithFace = async (req: AuthRequest, res: Response):
       {
         sessionId,
         subjectId,
-        similarity: similarity.toFixed(2),
+        similarity: match.similarity.toFixed(2),
+        livenessActions: challenge.livenessActions,
         isLate,
       },
       getClientIp(req)
@@ -252,7 +357,7 @@ export const verifyAttendanceWithFace = async (req: AuthRequest, res: Response):
 
     res.json({
       success: true,
-      message: 'Attendance marked via facial recognition',
+      message: `Attendance marked via facial recognition${isLate ? ' (late entry accepted)' : ''}`,
       data: {
         recordId: record._id,
         isLate,

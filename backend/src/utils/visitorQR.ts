@@ -22,13 +22,14 @@ export const generatePassCode = (): string => {
 };
 
 interface VisitorQRPayload {
-  passCode: string;   // only the pass code is embedded — no personal data
-  ts: number;         // creation timestamp
+  passCode: string;
+  token: string;
+  ts: number;
 }
 
-/** Generate a QR code image (base64 PNG) encoding only the passCode */
-export const generateVisitorQRCode = async (passCode: string): Promise<string> => {
-  const payload: VisitorQRPayload = { passCode, ts: Date.now() };
+/** Generate a QR code image (base64 PNG) encoding passCode + cryptographic token */
+export const generateVisitorQRCode = async (passCode: string, rawToken: string): Promise<string> => {
+  const payload: VisitorQRPayload = { passCode, token: rawToken, ts: Date.now() };
   return QRCode.toDataURL(JSON.stringify(payload), {
     errorCorrectionLevel: 'H',
     type: 'image/png',

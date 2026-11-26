@@ -149,31 +149,39 @@ export default function StudentProfilePage() {
                       Registered {formatDate(device.registeredAt)} · ID: {device.credentialId}
                     </p>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="Remove this device"
-                    className="text-destructive hover:bg-destructive/10 flex-shrink-0"
-                    loading={removeMutation.isPending}
-                    onClick={() => removeMutation.mutate(device.credentialId.replace('…', ''))}
-                  >
-                    <Trash2 className="w-4 h-4" aria-hidden="true" />
-                  </Button>
+                  {!bioStatus.locked && (
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Remove this device"
+                      className="text-destructive hover:bg-destructive/10 flex-shrink-0"
+                      loading={removeMutation.isPending}
+                      onClick={() => removeMutation.mutate(device.id)}
+                    >
+                      <Trash2 className="w-4 h-4" aria-hidden="true" />
+                    </Button>
+                  )}
                 </div>
               ))}
             </div>
           )}
 
           {/* Register button */}
-          <Button
-            variant={bioStatus?.registered ? 'outline' : 'gradient'}
-            className="w-full gap-2"
-            loading={registering || bioLoading}
-            onClick={handleRegister}
-          >
-            <Fingerprint className="w-4 h-4" aria-hidden="true" />
-            {bioStatus?.registered ? 'Register Another Device' : 'Register This Device'}
-          </Button>
+          {bioStatus?.locked && bioStatus?.registered ? (
+            <p className="text-xs text-muted-foreground text-center p-2.5 rounded-xl bg-muted/40 border">
+              Device biometric is locked to this device. Contact an administrator to reset if you change phones.
+            </p>
+          ) : (
+            <Button
+              variant={bioStatus?.registered ? 'outline' : 'gradient'}
+              className="w-full gap-2"
+              loading={registering || bioLoading}
+              onClick={handleRegister}
+            >
+              <Fingerprint className="w-4 h-4" aria-hidden="true" />
+              {bioStatus?.registered ? 'Register Another Device' : 'Register This Device'}
+            </Button>
+          )}
 
           <p className="text-xs text-muted-foreground text-center">
             Your biometric data never leaves this device. Only a secure cryptographic key is stored on our server.
@@ -201,40 +209,46 @@ export default function StudentProfilePage() {
             }
             <div>
               <p className={`text-sm font-medium ${user?.hasFaceDescriptor ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400'}`}>
-                {user?.hasFaceDescriptor ? 'Face profile enrolled' : 'Face profile not enrolled'}
+                {user?.hasFaceDescriptor ? (user?.faceLocked ? 'Face profile enrolled & locked' : 'Face profile enrolled') : 'Face profile not enrolled'}
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {user?.hasFaceDescriptor
-                  ? 'You can use Facial Recognition when scanning class QR codes.'
-                  : 'Enroll your 128-point facial descriptor (3 frames) to unlock face verification.'}
+                  ? user?.faceLocked
+                    ? 'Locked to prevent proxy re-enrollment. Contact an administrator to reset if needed.'
+                    : 'You can use Facial Recognition when scanning class QR codes.'
+                  : 'Complete a one-time active liveness check to enroll and lock your face profile.'}
               </p>
             </div>
           </div>
 
-          {!enrollingFace ? (
+          {user?.hasFaceDescriptor && user?.faceLocked ? (
+            <p className="text-xs text-muted-foreground text-center p-2.5 rounded-xl bg-muted/40 border">
+              Face enrollment is locked by anti-proxy policy. Ask an administrator to unlock if re-enrollment is required.
+            </p>
+          ) : !enrollingFace ? (
             <Button
               variant={user?.hasFaceDescriptor ? 'outline' : 'gradient'}
               className="w-full gap-2"
               onClick={() => setEnrollingFace(true)}
             >
               <ScanFace className="w-4 h-4" aria-hidden="true" />
-              {user?.hasFaceDescriptor ? 'Re-enroll Face Profile' : 'Enroll Face Profile'}
+              {user?.hasFaceDescriptor ? 'Re-enroll Face Profile' : 'Enroll Face Profile (Live Check)'}
             </Button>
           ) : (
             <FacialRecognitionCapture
               mode="register"
               isLoading={savingFace}
               onCancel={() => setEnrollingFace(false)}
-              onSuccess={async (descriptor) => {
+              onSuccess={async (livenessProof) => {
                 setSavingFace(true)
                 try {
-                  await attendanceService.registerFace(descriptor)
-                  updateUser({ hasFaceDescriptor: true })
+                  await attendanceService.registerFace(livenessProof)
+                  updateUser({ hasFaceDescriptor: true, faceLocked: true })
                   setEnrollingFace(false)
-                  toast({ title: 'Face enrolled!', description: 'Facial recognition is now active for attendance.', variant: 'success' })
+                  toast({ title: 'Face enrolled & locked!', description: 'Live facial verification is now active for attendance.', variant: 'success' })
                 } catch (err) {
                   const error = err as ApiError
-                  toast({ title: 'Enrollment failed', description: error.response?.data?.message || 'Could not save face descriptor.', variant: 'destructive' })
+                  toast({ title: 'Enrollment failed', description: error.response?.data?.message || 'Could not save face enrollment.', variant: 'destructive' })
                 } finally {
                   setSavingFace(false)
                 }

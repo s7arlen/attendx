@@ -64,7 +64,7 @@ export const visitorService = {
   },
 
   // Gate scanning
-  scanQR: async (data: { passCode: string; action: 'entry' | 'exit' }) => {
+  scanQR: async (data: { passCode: string; token?: string; scanMethod?: 'qr' | 'manual'; action: 'entry' | 'exit' }) => {
     const res = await api.post('/visitor/scan', data);
     return res.data;
   },

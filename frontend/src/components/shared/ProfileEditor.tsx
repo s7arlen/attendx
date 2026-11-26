@@ -48,10 +48,11 @@ export function ProfileEditCard() {
   const onSubmit = async (data: ProfileForm) => {
     setSaving(true)
     try {
-      const updated = await authService.updateProfile({
-        ...data,
-        year: data.year ? parseInt(data.year) : undefined,
-      })
+      const payload =
+        user?.role === 'student'
+          ? { name: data.name, phone: data.phone }
+          : { ...data, year: data.year ? parseInt(data.year) : undefined }
+      const updated = await authService.updateProfile(payload)
       updateUser(updated)
       toast({ title: 'Profile updated', variant: 'success' })
     } catch (err) {
@@ -86,7 +87,12 @@ export function ProfileEditCard() {
 
             <div className="space-y-1.5">
               <Label htmlFor="pe-dept">Department</Label>
-              <Input id="pe-dept" {...register('department')} placeholder="Computer Science" />
+              <Input
+                id="pe-dept"
+                {...register('department')}
+                placeholder="Computer Science"
+                disabled={user?.role === 'student'}
+              />
               {errors.department && <p className="text-xs text-destructive" role="alert">{errors.department.message}</p>}
             </div>
 
@@ -98,7 +104,7 @@ export function ProfileEditCard() {
                     name="year"
                     control={control}
                     render={({ field }) => (
-                      <Select value={field.value ?? ''} onValueChange={field.onChange}>
+                      <Select value={field.value ?? ''} onValueChange={field.onChange} disabled>
                         <SelectTrigger id="pe-year"><SelectValue placeholder="Select year" /></SelectTrigger>
                         <SelectContent>
                           {[1, 2, 3, 4].map(y => (
@@ -111,7 +117,7 @@ export function ProfileEditCard() {
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="pe-section">Section</Label>
-                  <Input id="pe-section" {...register('section')} placeholder="A" />
+                  <Input id="pe-section" {...register('section')} placeholder="A" disabled />
                 </div>
                 <div className="col-span-2 space-y-1.5">
                   <Label htmlFor="pe-roll">USN / Roll Number</Label>
@@ -126,18 +132,17 @@ export function ProfileEditCard() {
                             id="pe-roll"
                             placeholder="4CB25CS001"
                             value={field.value ?? ''}
-                            onChange={(e) => field.onChange(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                            disabled
                             maxLength={12}
                             className={`font-mono uppercase tracking-widest ${field.value && !isValid ? 'border-destructive' : ''}`}
                           />
-                          <p className={`text-xs ${field.value ? (isValid ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive') : 'text-muted-foreground'}`}>
-                            {field.value ? (isValid ? `Valid: ${field.value}` : 'e.g. 4CB25CS001 · year · branch · roll') : 'Format: 4CB25CS001'}
+                          <p className="text-xs text-muted-foreground">
+                            Department, Year, Section, and USN are locked and managed by administration.
                           </p>
                         </div>
                       )
                     }}
                   />
-                  {errors.rollNumber && <p className="text-xs text-destructive" role="alert">{errors.rollNumber.message}</p>}
                 </div>
               </>
             )}

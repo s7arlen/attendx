@@ -8,15 +8,29 @@ const DAY_MAP: Record<number, string> = {
   4: 'Thursday', 5: 'Friday', 6: 'Saturday',
 };
 
-function getIST(): Date {
-  const now = new Date();
-  return new Date(now.getTime() + 5.5 * 3600000);
+function getISTParts(now = new Date()): {
+  dayName: string;
+  year: number;
+  month: number;
+  date: number;
+  isoString: string;
+} {
+  const istMs = now.getTime() + 5.5 * 3600000;
+  const ist = new Date(istMs);
+  return {
+    dayName: DAY_MAP[ist.getUTCDay()],
+    year: ist.getUTCFullYear(),
+    month: ist.getUTCMonth(),
+    date: ist.getUTCDate(),
+    isoString: ist.toISOString(),
+  };
 }
 
 export const getAutoSessionsToday = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const ist = getIST();
-    const todayName = DAY_MAP[ist.getDay()];
+    const nowDate = new Date();
+    const ist = getISTParts(nowDate);
+    const todayName = ist.dayName;
 
     const timetable = await Timetable.find({
       teacherId: req.user!.userId,
@@ -28,32 +42,28 @@ export const getAutoSessionsToday = async (req: AuthRequest, res: Response): Pro
       const sub = slot.subjectId as any;
 
       const [sh, sm] = slot.startTime.split(':').map(Number);
-      const [eh, em] = slot.endTime.split(':').map(Number);
 
-      const slotStart = new Date(ist);
-      slotStart.setHours(sh, sm, 0, 0);
-      const slotEnd = new Date(ist);
-      slotEnd.setHours(eh, em, 0, 0);
+      // Compute slot start as real UTC epoch corresponding to today's IST HH:MM
+      const slotStartUtcMs = Date.UTC(ist.year, ist.month, ist.date, sh, sm, 0, 0) - 5.5 * 3600000;
 
       // Find session created within 15 min of slot start (auto or manual)
-      const windowStart = new Date(slotStart.getTime() - 15 * 60000);
+      const windowStart = new Date(slotStartUtcMs - 15 * 60000);
       const session = await AttendanceSession.findOne({
         subjectId: sub?._id,
         teacherId: req.user!.userId,
         startTime: { $gte: windowStart },
       }).sort({ createdAt: -1 });
 
-      const now = ist.getTime();
-      const startMs = slotStart.getTime();
-      const endMs = slotEnd.getTime();
+      const nowMs = nowDate.getTime();
+      const startMs = slotStartUtcMs;
 
       let status: string;
       if (session?.status === 'active') status = 'live';
       else if (session?.status === 'ended' || session?.status === 'expired') status = 'done';
-      else if (startMs > now) status = 'upcoming';
+      else if (startMs > nowMs) status = 'upcoming';
       else status = 'missed';
 
-      const minutesUntil = startMs > now ? Math.round((startMs - now) / 60000) : null;
+      const minutesUntil = startMs > nowMs ? Math.round((startMs - nowMs) / 60000) : null;
 
       return {
         timetableId: slot._id,
@@ -75,7 +85,7 @@ export const getAutoSessionsToday = async (req: AuthRequest, res: Response): Pro
       };
     }));
 
-    res.json({ success: true, data: { day: todayName, slots, istTime: ist.toISOString() } });
+    res.json({ success: true, data: { day: todayName, slots, istTime: ist.isoString } });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
   }

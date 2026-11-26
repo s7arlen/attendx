@@ -8,12 +8,13 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useParams } from 'react-router-dom'
-import { QrCode, Users, Clock, MapPin, RefreshCw, CheckCircle, XCircle } from 'lucide-react'
+import { useParams, useSearchParams } from 'react-router-dom'
+import { QrCode, Users, MapPin, RefreshCw, CheckCircle, XCircle } from 'lucide-react'
 import api from '@/lib/axios'
 
 interface ProjectorData {
   sessionCode: string
+  dynamicCode?: string
   qrCodeData: string
   subjectName: string
   subjectCode: string
@@ -49,6 +50,8 @@ const SESSION_TYPE_LABEL: Record<string, string> = {
 
 export default function ProjectorPage() {
   const { sessionCode } = useParams<{ sessionCode: string }>()
+  const [searchParams] = useSearchParams()
+  const projectorKey = searchParams.get('key') || ''
   const [data, setData] = useState<ProjectorData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [msLeft, setMsLeft] = useState(0)
@@ -60,7 +63,9 @@ export default function ProjectorPage() {
     if (!sessionCode || fetchingRef.current) return
     fetchingRef.current = true
     try {
-      const res = await api.get(`/attendance/projector/${sessionCode}`)
+      const res = await api.get(`/attendance/projector/${sessionCode}`, {
+        params: projectorKey ? { key: projectorKey } : undefined,
+      })
       const d: ProjectorData = res.data.data
       const refreshSeconds = d.qrRefreshSeconds || 15
       const nextCountdown =
@@ -74,13 +79,14 @@ export default function ProjectorPage() {
 
       const effectiveExpiry = new Date(d.expiryTime).getTime() + d.gracePeriodMinutes * 60 * 1000
       setMsLeft(Math.max(0, effectiveExpiry - Date.now()))
-    } catch (e: any) {
-      setError(e.response?.data?.message || 'Session not found')
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { message?: string } } }
+      setError(err.response?.data?.message || 'Session not found')
     } finally {
       fetchingRef.current = false
       setLoading(false)
     }
-  }, [sessionCode])
+  }, [sessionCode, projectorKey])
 
   // Initial fetch
   useEffect(() => {
@@ -99,9 +105,12 @@ export default function ProjectorPage() {
   }, [data])
 
   // QR refresh counter + re-fetch (resumes immediately when tab returns visible)
+  const hasData = !!data
+  const dataQrRefresh = data?.qrRefreshSeconds
+  const dataStatus = data?.status
   useEffect(() => {
-    if (!data || data.status === 'ended' || data.status === 'expired') return
-    const refreshInterval = data.qrRefreshSeconds || 15
+    if (!hasData || dataStatus === 'ended' || dataStatus === 'expired') return
+    const refreshInterval = dataQrRefresh || 15
 
     const tick = setInterval(() => {
       if (document.hidden) return
@@ -125,7 +134,7 @@ export default function ProjectorPage() {
       clearInterval(tick)
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
-  }, [data?.qrRefreshSeconds, data?.status, fetchSession])
+  }, [hasData, dataQrRefresh, dataStatus, fetchSession])
 
   // Page title
   useEffect(() => {
@@ -134,7 +143,6 @@ export default function ProjectorPage() {
     }
   }, [data])
 
-  const isExpired = msLeft <= 0
   const isEnded = data?.status === 'ended' || data?.status === 'expired'
   const displayName = data?.title || data?.subjectName || 'Attendance Session'
 
@@ -228,16 +236,16 @@ export default function ProjectorPage() {
         {/* Info panel */}
         <div className="space-y-8 max-w-sm w-full">
 
-          {/* Session Code */}
+          {/* Live Rotating Classroom Code */}
           <div className="bg-card border border-border rounded-2xl p-6">
             <p className="text-xs text-muted-foreground uppercase tracking-widest font-medium mb-2">
-              Session Code
+              Live Classroom Code
             </p>
             <p className="font-mono text-4xl xl:text-5xl font-bold tracking-wider text-foreground">
-              {data.sessionCode}
+              {data.dynamicCode || '------'}
             </p>
             <p className="text-xs text-muted-foreground mt-2">
-              Enter in app if camera unavailable
+              Rotates every {data.qrRefreshSeconds || 15}s · Use if camera unavailable
             </p>
           </div>
 

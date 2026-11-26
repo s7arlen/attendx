@@ -638,16 +638,57 @@ export const resolveDispute = async (req: AuthRequest, res: Response): Promise<v
       res.status(400).json({ success: false, message: 'Status must be verified or rejected' });
       return;
     }
-    const record = await AttendanceRecord.findByIdAndUpdate(
-      id,
-      { verificationStatus },
-      { new: true }
-    );
-    if (!record) { res.status(404).json({ success: false, message: 'Record not found' }); return; }
-    await createAuditLog(req.user!.userId, 'RESOLVE_DISPUTE', 'AttendanceRecord', id, { verificationStatus }, getClientIp(req));
-    res.json({ success: true, message: `Record ${verificationStatus}`, data: { record } });
+    const existing = await AttendanceRecord.findById(id);
+    if (!existing) { res.status(404).json({ success: false, message: 'Record not found' }); return; }
+
+    const prevStatus = existing.verificationStatus;
+    existing.verificationStatus = verificationStatus;
+    await existing.save();
+
+    if (prevStatus !== 'verified' && verificationStatus === 'verified') {
+      await AttendanceSession.findByIdAndUpdate(existing.sessionId, { $inc: { totalPresent: 1 } });
+    } else if (prevStatus === 'verified' && verificationStatus === 'rejected') {
+      await AttendanceSession.findByIdAndUpdate(existing.sessionId, { $inc: { totalPresent: -1 } });
+    }
+
+    await createAuditLog(req.user!.userId, 'RESOLVE_DISPUTE', 'AttendanceRecord', id, { prevStatus, verificationStatus }, getClientIp(req));
+    res.json({ success: true, message: `Record ${verificationStatus}`, data: { record: existing } });
   } catch {
     res.status(500).json({ success: false, message: 'Failed to resolve dispute' });
+  }
+};
+
+export const resetStudentFace = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    if (!isValidObjectId(id)) { res.status(400).json({ success: false, message: 'Invalid student ID' }); return; }
+    const student = await User.findOneAndUpdate(
+      { _id: id, role: 'student' },
+      { $unset: { faceDescriptor: '' } },
+      { new: true }
+    ).select(USER_SAFE_PROJECTION);
+    if (!student) { res.status(404).json({ success: false, message: 'Student not found' }); return; }
+    await createAuditLog(req.user!.userId, 'RESET_STUDENT_FACE', 'User', id, { name: student.name }, getClientIp(req));
+    res.json({ success: true, message: 'Student face enrollment reset. Student can now re-enroll once.', data: { student } });
+  } catch {
+    res.status(500).json({ success: false, message: 'Failed to reset student face profile' });
+  }
+};
+
+export const resetStudentBiometrics = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    if (!isValidObjectId(id)) { res.status(400).json({ success: false, message: 'Invalid student ID' }); return; }
+    const student = await User.findOneAndUpdate(
+      { _id: id, role: 'student' },
+      { $set: { webauthnCredentials: [], webauthnLocked: false }, $unset: { webauthnChallenge: '' } },
+      { new: true }
+    ).select(USER_SAFE_PROJECTION);
+    if (!student) { res.status(404).json({ success: false, message: 'Student not found' }); return; }
+    await createAuditLog(req.user!.userId, 'RESET_STUDENT_BIOMETRICS', 'User', id, { name: student.name }, getClientIp(req));
+    res.json({ success: true, message: 'Student biometric credentials reset.', data: { student } });
+  } catch {
+    res.status(500).json({ success: false, message: 'Failed to reset student biometrics' });
   }
 };
 

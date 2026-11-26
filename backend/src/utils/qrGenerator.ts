@@ -12,6 +12,19 @@ export const generateSecureToken = (): string => {
   return crypto.randomBytes(32).toString('hex');
 };
 
+export const generateDynamicCode = (): string => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(crypto.randomInt(0, chars.length));
+  }
+  return code;
+};
+
+export const generateProjectorSecret = (): string => {
+  return crypto.randomBytes(24).toString('hex');
+};
+
 export const generateSessionCode = (subjectCode: string): string => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let randomPart = '';
@@ -42,6 +55,8 @@ export const generateSessionAssets = async (
 ) => {
   const secureToken = generateSecureToken();
   const sessionCode = generateSessionCode(subjectCode);
+  const dynamicCode = generateDynamicCode();
+  const projectorSecret = generateProjectorSecret();
 
   const qrPayload: QRPayload = {
     sessionId,
@@ -55,20 +70,23 @@ export const generateSessionAssets = async (
   return {
     secureToken,
     sessionCode,
+    dynamicCode,
+    projectorSecret,
     qrCodeData,
     qrPayload,
   };
 };
 
 /**
- * Regenerate only the secure token + QR image for an existing session.
- * Called every N seconds to invalidate old QR screenshots.
+ * Regenerate only the secure token, rotating classroom code + QR image for an existing session.
+ * Called every N seconds to invalidate old QR screenshots and shared codes.
  */
 export const generateFreshQR = async (
   sessionId: string,
   subjectId: string
-): Promise<{ secureToken: string; qrCodeData: string }> => {
+): Promise<{ secureToken: string; dynamicCode: string; qrCodeData: string }> => {
   const secureToken = generateSecureToken();
+  const dynamicCode = generateDynamicCode();
 
   const qrPayload: QRPayload = {
     sessionId,
@@ -78,5 +96,5 @@ export const generateFreshQR = async (
   };
 
   const qrCodeData = await generateQRCode(qrPayload);
-  return { secureToken, qrCodeData };
+  return { secureToken, dynamicCode, qrCodeData };
 };

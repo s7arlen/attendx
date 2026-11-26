@@ -152,7 +152,7 @@ export default function TeacherSessionDetailPage() {
             <div className="flex items-center gap-2 p-3 rounded-xl bg-primary/5 border border-primary/20 text-sm">
               <span className="text-muted-foreground">Session is live —</span>
               <button
-                onClick={() => window.open(`/projector/${session.sessionCode}`, '_blank')}
+                onClick={() => window.open(`/projector/${session.sessionCode}${session.projectorSecret ? `?key=${encodeURIComponent(session.projectorSecret)}` : ''}`, '_blank')}
                 className="flex items-center gap-1 text-primary hover:underline font-medium"
               >
                 Open Projector View <ExternalLink className="w-3.5 h-3.5" />

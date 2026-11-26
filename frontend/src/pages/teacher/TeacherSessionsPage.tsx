@@ -35,6 +35,7 @@ const DEFAULT_QR_REFRESH = 15
 function LiveSessionModal({ session, onEnd, ending, onClose }: LiveSessionModalProps) {
   const [msLeft, setMsLeft] = useState(() => timeRemaining(session.expiryTime))
   const [qrCodeData, setQrCodeData] = useState(session.qrCodeData)
+  const [dynamicCode, setDynamicCode] = useState(session.dynamicCode || '')
   const [socketRefreshSeconds, setSocketRefreshSeconds] = useState<number | null>(null)
   const initialQrInterval = (session as any).qrRefreshSeconds ?? DEFAULT_QR_REFRESH
   const [qrSecondsLeft, setQrSecondsLeft] = useState(initialQrInterval)
@@ -76,11 +77,20 @@ function LiveSessionModal({ session, onEnd, ending, onClose }: LiveSessionModalP
     return () => clearInterval(tick)
   }, [session.expiryTime])
 
+  useEffect(() => {
+    if (liveData?.session?.dynamicCode) {
+      setDynamicCode(liveData.session.dynamicCode)
+    }
+  }, [liveData?.session?.dynamicCode])
+
   const doRefresh = useCallback(async () => {
     setIsRefreshing(true)
     try {
       const data = await attendanceService.refreshQR(session._id)
       setQrCodeData(data.qrCodeData)
+      if (data.dynamicCode) {
+        setDynamicCode(data.dynamicCode)
+      }
       if (data.qrRefreshSeconds) {
         setSocketRefreshSeconds(data.qrRefreshSeconds)
       }
@@ -125,8 +135,9 @@ function LiveSessionModal({ session, onEnd, ending, onClose }: LiveSessionModalP
     const offMarked = socket.onEvent('attendance:marked', (d: { totalPresent: number }) => {
       setSocketPresent(d.totalPresent)
     })
-    const offQr = socket.onEvent('qr:refreshed', (d: { qrCodeData?: string; qrRefreshSeconds?: number }) => {
+    const offQr = socket.onEvent('qr:refreshed', (d: { qrCodeData?: string; dynamicCode?: string; qrRefreshSeconds?: number }) => {
       if (d.qrCodeData) setQrCodeData(d.qrCodeData)
+      if (d.dynamicCode) setDynamicCode(d.dynamicCode)
       if (d.qrRefreshSeconds) setSocketRefreshSeconds(d.qrRefreshSeconds)
       setQrSecondsLeft(d.qrRefreshSeconds || qrInterval)
     })
@@ -143,7 +154,8 @@ function LiveSessionModal({ session, onEnd, ending, onClose }: LiveSessionModalP
   const capacity: number | null = (session as any).capacity ?? null
   const sessionType: string = (session as any).sessionType ?? 'class'
   const venue: string | null = (session as any).venue ?? null
-  const projectorUrl = `${window.location.origin}/projector/${session.sessionCode}`
+  const projectorSecret = liveData?.session?.projectorSecret || session.projectorSecret || ''
+  const projectorUrl = `${window.location.origin}/projector/${session.sessionCode}${projectorSecret ? `?key=${encodeURIComponent(projectorSecret)}` : ''}`
   const subjectName = typeof session.subjectId === 'object'
     ? session.subjectId.subjectName : 'Session'
   const subjectCode = typeof session.subjectId === 'object' && session.subjectId !== null
@@ -227,8 +239,11 @@ function LiveSessionModal({ session, onEnd, ending, onClose }: LiveSessionModalP
 
           <div className="space-y-6 max-w-sm w-full">
             <div>
-              <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium mb-1">Session Code</p>
-              <p className="font-mono text-3xl font-bold tracking-wider select-all">{session.sessionCode}</p>
+              <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium mb-1">
+                Live Classroom Code (Rotates every {qrInterval}s)
+              </p>
+              <p className="font-mono text-4xl font-bold tracking-wider select-all">{dynamicCode || '------'}</p>
+              <p className="text-[11px] text-muted-foreground mt-1">Session ID: {session.sessionCode}</p>
             </div>
             <div className="pt-2 border-t border-border/60">
               <p className="text-2xl font-semibold font-mono">{totalPresent}</p>
@@ -351,24 +366,25 @@ function LiveSessionModal({ session, onEnd, ending, onClose }: LiveSessionModalP
 
                 <div className="h-px bg-border/60" />
 
-                {/* Manual Entry Codes (Full width rows so codes never wrap) */}
+                {/* Manual Entry Rotating Code */}
                 <div className="space-y-2.5">
                   <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                    Manual Entry
+                    Manual Entry (Rotates Every {qrInterval}s)
                   </span>
 
-                  {/* Session Code */}
+                  {/* Dynamic Classroom Code */}
                   <div className="flex items-center justify-between p-2.5 rounded-lg border border-border/70 bg-muted/30">
                     <div>
-                      <span className="text-[10px] text-muted-foreground uppercase block font-medium">Session Code</span>
+                      <span className="text-[10px] text-muted-foreground uppercase block font-medium">Live Classroom Code</span>
                       <span className="font-mono text-base font-semibold tracking-wider text-foreground select-all">
-                        {session.sessionCode}
+                        {dynamicCode || '------'}
                       </span>
+                      <span className="text-[10px] text-muted-foreground block mt-0.5">Session ID: {session.sessionCode}</span>
                     </div>
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => handleCopy(session.sessionCode, 'sessionCode')}
+                      onClick={() => handleCopy(dynamicCode || session.sessionCode, 'sessionCode')}
                       className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground gap-1"
                     >
                       {copiedField === 'sessionCode' ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}

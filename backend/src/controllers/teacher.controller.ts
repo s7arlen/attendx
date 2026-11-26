@@ -37,7 +37,7 @@ export const getActiveSessions = async (req: AuthRequest, res: Response): Promis
     const sessions = await AttendanceSession.find({
       teacherId: req.user!.userId,
       status: 'active',
-    }).populate('subjectId', 'subjectName subjectCode department year section');
+    }).select('-issuedTokenHashes').populate('subjectId', 'subjectName subjectCode department year section');
     res.json({ success: true, data: { sessions } });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
@@ -50,14 +50,14 @@ export const getSessionReport = async (req: AuthRequest, res: Response): Promise
     const session = await AttendanceSession.findOne({
       _id: sessionId,
       teacherId: req.user!.userId,
-    }).populate('subjectId', 'subjectName subjectCode department year section');
+    }).select('-issuedTokenHashes').populate('subjectId', 'subjectName subjectCode department year section');
 
     if (!session) {
       res.status(404).json({ success: false, message: 'Session not found' });
       return;
     }
 
-    const records = await AttendanceRecord.find({ sessionId })
+    const records = await AttendanceRecord.find({ sessionId, verificationStatus: 'verified' })
       .populate('studentId', 'name email rollNumber year section department')
       .sort({ timestamp: 1 });
 
@@ -80,7 +80,11 @@ export const getSubjectAttendance = async (req: AuthRequest, res: Response): Pro
     const sessions = await AttendanceSession.find({ subjectId, teacherId: req.user!.userId }).sort({ createdAt: -1 });
     const sessionIds = sessions.map(s => s._id);
 
-    const records = await AttendanceRecord.find({ subjectId, sessionId: { $in: sessionIds } })
+    const records = await AttendanceRecord.find({
+      subjectId,
+      sessionId: { $in: sessionIds },
+      verificationStatus: 'verified',
+    })
       .populate('studentId', 'name rollNumber year section');
 
     // Group by student

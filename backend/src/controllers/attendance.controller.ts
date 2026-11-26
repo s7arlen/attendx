@@ -1,6 +1,8 @@
-﻿import { Response } from 'express';
+﻿import { Request, Response } from 'express';
 import mongoose from 'mongoose';
+import jwt from 'jsonwebtoken';
 import { z } from 'zod';
+import { Server } from 'socket.io';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { AttendanceSession } from '../models/AttendanceSession.model';
 import { AttendanceRecord } from '../models/AttendanceRecord.model';
@@ -14,13 +16,33 @@ import {
 import { generateSessionAssets, generateFreshQR } from '../utils/qrGenerator';
 import { createAuditLog, getClientIp } from '../utils/auditLogger';
 import { emitToSession } from '../config/socket';
-import { Server } from 'socket.io';
-import { clampPagination, isValidObjectId, sanitizeCsvCell, checkGeoFence } from '../utils/security';
 import {
+  clampPagination,
+  isValidObjectId,
+  sanitizeCsvCell,
+  checkGeoFence,
+  hashSha256,
+  safeEqualHex,
+  getJwtSecret,
+} from '../utils/security';
+import {
+  evaluateSessionWindow,
   getSecondsUntilNextRefresh,
+  isValidDynamicClassroomCode,
   isValidSessionQrToken,
   resolveQrRefreshSeconds,
 } from '../utils/qrSession';
+import { evaluateFaceMatch, verifyLivenessProof } from '../utils/faceSecurity';
+import {
+  checkStudentSessionEligibility,
+  consumeChallengeAtomically,
+  detectSameDeviceCollusion,
+  getNormalizedDeviceId,
+  incrementChallengeFailure,
+  issueAttendanceChallenge,
+  validateActiveChallenge,
+  VERIFIED_ATTENDANCE_FILTER,
+} from '../utils/attendanceHelper';
 
 const geoFenceSchema = z.object({
   latitude: z.number().min(-90).max(90),
@@ -54,6 +76,28 @@ function buildSessionAccessFilter(sessionId: string, req: AuthRequest) {
       { coHosts: req.user!.userId },
     ],
   };
+}
+
+async function isAuthorizedForProjector(req: Request, projectorSecret?: string | null): Promise<boolean> {
+  const key = typeof req.query?.key === 'string' ? req.query.key.trim() : '';
+  if (key && projectorSecret && safeEqualHex(hashSha256(key), hashSha256(projectorSecret))) {
+    return true;
+  }
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    try {
+      const decoded = jwt.verify(authHeader.substring(7), getJwtSecret(), { algorithms: ['HS256'] }) as {
+        userId: string;
+      };
+      const user = await User.findById(decoded.userId).select('role isActive');
+      if (user && user.isActive && (user.role === 'teacher' || user.role === 'admin')) {
+        return true;
+      }
+    } catch {
+      return false;
+    }
+  }
+  return false;
 }
 
 // ── TEACHER: START SESSION ────────────────────────────────────────────────────
@@ -104,11 +148,8 @@ export const startSession = async (req: AuthRequest, res: Response): Promise<voi
     const newId = new mongoose.Types.ObjectId();
     const sessionIdStr = newId.toString();
 
-    const { secureToken, sessionCode, qrCodeData } = await generateSessionAssets(
-      sessionIdStr,
-      subjectId,
-      subject.subjectCode
-    );
+    const { secureToken, sessionCode, dynamicCode, projectorSecret, qrCodeData } =
+      await generateSessionAssets(sessionIdStr, subjectId, subject.subjectCode);
 
     const settings = await getSystemSettings();
     const resolvedQrRefresh = qrRefreshSeconds ?? settings.qrRefreshSeconds;
@@ -121,8 +162,11 @@ export const startSession = async (req: AuthRequest, res: Response): Promise<voi
       subjectId,
       teacherId: req.user!.userId,
       sessionCode,
+      dynamicCode,
+      projectorSecret,
       qrToken: secureToken,
       qrCodeData,
+      issuedTokenHashes: [{ hash: hashSha256(secureToken), issuedAt: startTime }],
       startTime,
       expiryTime,
       status: 'active',
@@ -141,6 +185,7 @@ export const startSession = async (req: AuthRequest, res: Response): Promise<voi
     });
 
     const populated = await AttendanceSession.findById(session._id)
+      .select('-issuedTokenHashes')
       .populate('subjectId', 'subjectName subjectCode department year section');
 
     await createAuditLog(
@@ -162,7 +207,7 @@ export const startSession = async (req: AuthRequest, res: Response): Promise<voi
         createNotification(
           s._id.toString(),
           'Attendance Session Live',
-          `${subject.subjectName} attendance is now open. Session code: ${sessionCode}`,
+          `${subject.subjectName} attendance is now open. Scan the live QR or enter the rotating code on your teacher's screen.`,
           'info',
           '/student/scan'
         )
@@ -175,7 +220,7 @@ export const startSession = async (req: AuthRequest, res: Response): Promise<voi
   }
 };
 
-// ── TEACHER: REFRESH QR TOKEN ─────────────────────────────────────────────────
+// ── TEACHER: REFRESH QR TOKEN + ROTATING CODE ─────────────────────────────────
 export const refreshQR = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { sessionId } = req.params;
@@ -194,42 +239,60 @@ export const refreshQR = async (req: AuthRequest, res: Response): Promise<void> 
       return;
     }
 
-    const effectiveExpiry = new Date(session.expiryTime.getTime() + session.gracePeriodMinutes * 60 * 1000);
-    if (new Date() > effectiveExpiry) {
+    const windowCheck = evaluateSessionWindow(session);
+    if (!windowCheck.valid) {
       session.status = 'expired';
       await session.save();
-      res.status(400).json({ success: false, message: 'Session has expired' });
+      res.status(400).json({ success: false, message: windowCheck.reason || 'Session has expired' });
       return;
     }
 
-    const { secureToken, qrCodeData } = await generateFreshQR(
+    const { secureToken, dynamicCode, qrCodeData } = await generateFreshQR(
       sessionId,
       (session.subjectId as any)._id?.toString() ?? session.subjectId.toString()
     );
 
     const now = new Date();
-    session.previousQrToken = session.qrToken;
-    session.qrTokenRotatedAt = now;
-    session.qrLastRefreshedAt = now;
-    session.qrToken = secureToken;
-    session.qrCodeData = qrCodeData;
-    await session.save();
+    const tokenHash = hashSha256(secureToken);
+    const updated = await AttendanceSession.findOneAndUpdate(
+      { _id: session._id, status: 'active' },
+      {
+        $set: {
+          previousQrToken: session.qrToken,
+          previousDynamicCode: session.dynamicCode,
+          qrTokenRotatedAt: now,
+          qrLastRefreshedAt: now,
+          qrToken: secureToken,
+          dynamicCode,
+          qrCodeData,
+        },
+        $push: {
+          issuedTokenHashes: {
+            $each: [{ hash: tokenHash, issuedAt: now }],
+            $slice: -120,
+          },
+        },
+      },
+      { new: true }
+    );
 
-    const refreshSeconds = resolveQrRefreshSeconds(session.qrRefreshSeconds);
+    const refreshSeconds = resolveQrRefreshSeconds(updated?.qrRefreshSeconds ?? session.qrRefreshSeconds);
     const io: Server = req.app.get('io');
-    emitToSession(io, sessionId, 'qr:refreshed', {
-      sessionId,
-      qrCodeData,
-      secureToken,
-      qrRefreshSeconds: refreshSeconds,
-      refreshedAt: now.toISOString(),
-    });
+    if (io) {
+      emitToSession(io, sessionId, 'qr:refreshed', {
+        sessionId,
+        qrCodeData,
+        dynamicCode,
+        qrRefreshSeconds: refreshSeconds,
+        refreshedAt: now.toISOString(),
+      });
+    }
 
     res.json({
       success: true,
       data: {
         qrCodeData,
-        qrToken: secureToken,
+        dynamicCode,
         qrRefreshSeconds: refreshSeconds,
         refreshedAt: now.toISOString(),
       },
@@ -262,7 +325,9 @@ export const endSession = async (req: AuthRequest, res: Response): Promise<void>
     await session.save();
 
     const io: Server = req.app.get('io');
-    emitToSession(io, sessionId, 'session:ended', { sessionId, message: 'Session ended by teacher' });
+    if (io) {
+      emitToSession(io, sessionId, 'session:ended', { sessionId, message: 'Session ended by teacher' });
+    }
 
     await createAuditLog(req.user!.userId, 'END_SESSION', 'AttendanceSession', sessionId, {}, getClientIp(req));
 
@@ -292,6 +357,7 @@ export const getLiveSession = async (req: AuthRequest, res: Response): Promise<v
     }
 
     const session = await AttendanceSession.findOne(buildSessionAccessFilter(sessionId, req))
+      .select('-issuedTokenHashes')
       .populate('subjectId', 'subjectName subjectCode department year section');
 
     if (!session) {
@@ -299,7 +365,10 @@ export const getLiveSession = async (req: AuthRequest, res: Response): Promise<v
       return;
     }
 
-    const attendanceRecords = await AttendanceRecord.find({ sessionId })
+    const attendanceRecords = await AttendanceRecord.find({
+      sessionId,
+      ...VERIFIED_ATTENDANCE_FILTER,
+    })
       .populate('studentId', 'name email rollNumber year section')
       .sort({ timestamp: -1 });
 
@@ -333,8 +402,8 @@ export const getLiveSession = async (req: AuthRequest, res: Response): Promise<v
   }
 };
 
-// ── PUBLIC: PROJECTOR VIEW (no auth — safe fields only) ──────────────────────
-export const getProjectorSession = async (req: any, res: Response): Promise<void> => {
+// ── CLASSROOM PROJECTOR VIEW (requires ?key=projectorSecret or teacher/admin JWT) ──
+export const getProjectorSession = async (req: Request, res: Response): Promise<void> => {
   try {
     const { sessionCode } = req.params;
     if (!sessionCode || typeof sessionCode !== 'string' || sessionCode.length > 40) {
@@ -348,6 +417,15 @@ export const getProjectorSession = async (req: any, res: Response): Promise<void
 
     if (!session) {
       res.status(404).json({ success: false, message: 'Session not found' });
+      return;
+    }
+
+    const authorized = await isAuthorizedForProjector(req, session.projectorSecret);
+    if (!authorized) {
+      res.status(401).json({
+        success: false,
+        message: 'Projector display requires an authorized projector key from the teacher.',
+      });
       return;
     }
 
@@ -367,7 +445,7 @@ export const getProjectorSession = async (req: any, res: Response): Promise<void
     ) {
       const cutoff = new Date(now.getTime() - refreshSeconds * 1000);
       const subjectIdStr = (session.subjectId as any)?._id?.toString() ?? session.subjectId.toString();
-      const { secureToken, qrCodeData } = await generateFreshQR(session._id.toString(), subjectIdStr);
+      const { secureToken, dynamicCode, qrCodeData } = await generateFreshQR(session._id.toString(), subjectIdStr);
 
       const updated = await AttendanceSession.findOneAndUpdate(
         {
@@ -381,10 +459,18 @@ export const getProjectorSession = async (req: any, res: Response): Promise<void
         {
           $set: {
             previousQrToken: session.qrToken,
+            previousDynamicCode: session.dynamicCode,
             qrTokenRotatedAt: now,
             qrLastRefreshedAt: now,
             qrToken: secureToken,
+            dynamicCode,
             qrCodeData,
+          },
+          $push: {
+            issuedTokenHashes: {
+              $each: [{ hash: hashSha256(secureToken), issuedAt: now }],
+              $slice: -120,
+            },
           },
         },
         { new: true }
@@ -393,13 +479,15 @@ export const getProjectorSession = async (req: any, res: Response): Promise<void
       if (updated) {
         session = updated;
         const io: Server = req.app.get('io');
-        emitToSession(io, session._id.toString(), 'qr:refreshed', {
-          sessionId: session._id.toString(),
-          qrCodeData,
-          secureToken,
-          qrRefreshSeconds: refreshSeconds,
-          refreshedAt: now.toISOString(),
-        });
+        if (io) {
+          emitToSession(io, session._id.toString(), 'qr:refreshed', {
+            sessionId: session._id.toString(),
+            qrCodeData,
+            dynamicCode,
+            qrRefreshSeconds: refreshSeconds,
+            refreshedAt: now.toISOString(),
+          });
+        }
       } else {
         const latest = await AttendanceSession.findById(session._id)
           .populate('subjectId', 'subjectName subjectCode department year section');
@@ -414,6 +502,7 @@ export const getProjectorSession = async (req: any, res: Response): Promise<void
       success: true,
       data: {
         sessionCode: session.sessionCode,
+        dynamicCode: session.dynamicCode,
         qrCodeData: session.qrCodeData,
         subjectName: (session.subjectId as any)?.subjectName ?? 'Session',
         subjectCode: (session.subjectId as any)?.subjectCode ?? '',
@@ -441,6 +530,7 @@ export const getTeacherSessions = async (req: AuthRequest, res: Response): Promi
   try {
     const query = req.user!.role === 'admin' ? {} : { teacherId: req.user!.userId };
     const sessions = await AttendanceSession.find(query)
+      .select('-issuedTokenHashes')
       .populate('subjectId', 'subjectName subjectCode')
       .sort({ createdAt: -1 })
       .limit(50);
@@ -461,6 +551,7 @@ export const getSessionReport = async (req: AuthRequest, res: Response): Promise
     }
 
     const session = await AttendanceSession.findOne(buildSessionAccessFilter(sessionId, req))
+      .select('-issuedTokenHashes')
       .populate('subjectId', 'subjectName subjectCode department year section');
 
     if (!session) {
@@ -468,7 +559,10 @@ export const getSessionReport = async (req: AuthRequest, res: Response): Promise
       return;
     }
 
-    const records = await AttendanceRecord.find({ sessionId })
+    const records = await AttendanceRecord.find({
+      sessionId,
+      ...VERIFIED_ATTENDANCE_FILTER,
+    })
       .populate('studentId', 'name email rollNumber year section department')
       .sort({ timestamp: 1 });
 
@@ -513,6 +607,7 @@ export const exportSessionCSV = async (req: AuthRequest, res: Response): Promise
     const type = ['present', 'absent', 'all'].includes(String(req.query.type)) ? String(req.query.type) : 'present';
 
     const session = await AttendanceSession.findOne(buildSessionAccessFilter(sessionId, req))
+      .select('-issuedTokenHashes')
       .populate('subjectId', 'subjectName subjectCode department year section');
 
     if (!session) {
@@ -520,7 +615,10 @@ export const exportSessionCSV = async (req: AuthRequest, res: Response): Promise
       return;
     }
 
-    const records = await AttendanceRecord.find({ sessionId })
+    const records = await AttendanceRecord.find({
+      sessionId,
+      ...VERIFIED_ATTENDANCE_FILTER,
+    })
       .populate('studentId', 'name email rollNumber year section department')
       .sort({ timestamp: 1 });
 
@@ -612,7 +710,10 @@ export const getAttendanceSummary = async (req: AuthRequest, res: Response): Pro
   try {
     const studentId = req.user!.userId;
 
-    const records = await AttendanceRecord.find({ studentId }).populate('subjectId', 'subjectName subjectCode');
+    const records = await AttendanceRecord.find({
+      studentId,
+      ...VERIFIED_ATTENDANCE_FILTER,
+    }).populate('subjectId', 'subjectName subjectCode');
 
     const subjectMap = new Map<string, { subjectName: string; subjectCode: string; present: number }>();
     records.forEach((record) => {
@@ -636,65 +737,91 @@ export const getAttendanceSummary = async (req: AuthRequest, res: Response): Pro
   }
 };
 
-// ── STUDENT: FIND SESSION BY CODE ─────────────────────────────────────────────
+// ── STUDENT: FIND SESSION BY LIVE ROTATING DYNAMIC CODE ───────────────────────
 export const findSessionByCode = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { sessionCode } = req.params;
-    if (!sessionCode || sessionCode.length > 40) {
-      res.status(400).json({ success: false, message: 'Invalid session code' });
+    const incomingCode = String(req.params.sessionCode || '').trim().toUpperCase();
+    if (!incomingCode || incomingCode.length > 40) {
+      res.status(400).json({ success: false, message: 'Invalid classroom code' });
       return;
     }
 
+    // Only accept the CURRENT rotating classroom code (never static sessionCode or old rotated codes)
     const session = await AttendanceSession.findOne({
-      sessionCode: sessionCode.toUpperCase(),
+      dynamicCode: incomingCode,
       status: 'active',
     }).populate('subjectId', 'subjectName subjectCode department year section');
 
-    if (!session) {
-      res.status(404).json({ success: false, message: 'Session not found or no longer active' });
+    if (!session || !isValidDynamicClassroomCode(session, incomingCode)) {
+      res.status(404).json({
+        success: false,
+        message: 'Classroom code is invalid or expired — check the live code on your teacher\'s screen.',
+      });
       return;
     }
 
-    const effectiveExpiry = new Date(
-      session.expiryTime.getTime() + session.gracePeriodMinutes * 60 * 1000
-    );
-    if (new Date() > effectiveExpiry) {
+    const windowCheck = evaluateSessionWindow(session);
+    if (!windowCheck.valid) {
       session.status = 'expired';
       await session.save();
-      res.status(400).json({ success: false, message: 'Session has expired' });
+      res.status(400).json({ success: false, message: windowCheck.reason || 'Session has expired' });
       return;
     }
 
-    // Verify student eligibility before revealing session details/token
+    const subject = session.subjectId as any;
     if (req.user!.role === 'student') {
       const student = await User.findById(req.user!.userId).select('department year section rollNumber');
-      const subject = session.subjectId as any;
-      if (!student || !subject) {
+      if (!student) {
         res.status(403).json({ success: false, message: 'Access denied' });
         return;
       }
-      if (session.verificationMode === 'strict') {
-        if (
-          student.department !== subject.department ||
-          student.year !== subject.year ||
-          student.section !== subject.section
-        ) {
-          res.status(403).json({ success: false, message: 'You are not enrolled in this class section' });
-          return;
-        }
-      } else if (session.verificationMode === 'invite') {
-        const roll = student.rollNumber?.toUpperCase() || '';
-        if (!session.inviteList.includes(roll)) {
-          res.status(403).json({ success: false, message: 'You are not on the invite list for this session' });
-          return;
-        }
+      const eligibility = checkStudentSessionEligibility(session, student, subject);
+      if (!eligibility.allowed) {
+        res.status(403).json({ success: false, message: eligibility.message });
+        return;
       }
+    }
+
+    if (session.capacity && session.totalPresent >= session.capacity) {
+      res.status(400).json({ success: false, message: `Session is at full capacity (${session.capacity})` });
+      return;
     }
 
     const alreadyMarked = await AttendanceRecord.findOne({
       studentId: req.user!.userId,
       sessionId: session._id,
     });
+    if (alreadyMarked) {
+      res.json({
+        success: true,
+        data: {
+          session: {
+            id: session._id,
+            subject: session.subjectId,
+            expiryTime: session.expiryTime,
+            startTime: session.startTime,
+            sessionType: session.sessionType,
+            venue: session.venue,
+            title: session.title,
+            gracePeriodMinutes: session.gracePeriodMinutes,
+            geoFenceEnabled: !!session.geoFence?.latitude,
+            geoRadiusMeters: session.geoFence?.radiusMeters ?? null,
+          },
+          alreadyMarked: true,
+        },
+      });
+      return;
+    }
+
+    const deviceId = getNormalizedDeviceId(req);
+    const collusion = await detectSameDeviceCollusion(req, session._id.toString(), req.user!.userId, deviceId);
+    if (collusion.colluding) {
+      res.status(403).json({ success: false, message: collusion.message });
+      return;
+    }
+
+    // Issue single-use, user-bound verification challenge instead of leaking qrToken
+    const challenge = await issueAttendanceChallenge(req.user!.userId, session._id.toString(), deviceId);
 
     res.json({
       success: true,
@@ -702,10 +829,8 @@ export const findSessionByCode = async (req: AuthRequest, res: Response): Promis
         session: {
           id: session._id,
           subject: session.subjectId,
-          sessionCode: session.sessionCode,
           expiryTime: session.expiryTime,
           startTime: session.startTime,
-          qrToken: session.qrToken,
           sessionType: session.sessionType,
           venue: session.venue,
           title: session.title,
@@ -713,7 +838,8 @@ export const findSessionByCode = async (req: AuthRequest, res: Response): Promis
           geoFenceEnabled: !!session.geoFence?.latitude,
           geoRadiusMeters: session.geoFence?.radiusMeters ?? null,
         },
-        alreadyMarked: !!alreadyMarked,
+        alreadyMarked: false,
+        ...challenge,
       },
     });
   } catch (error: any) {
@@ -733,24 +859,66 @@ export const validateQR = async (req: AuthRequest, res: Response): Promise<void>
     const session = await AttendanceSession.findById(sessionId)
       .populate('subjectId', 'subjectName subjectCode department year section');
 
-    if (!session) {
-      res.status(404).json({ success: false, message: 'Session not found' });
+    const windowCheck = evaluateSessionWindow(session);
+    if (!session || !windowCheck.valid) {
+      res.status(400).json({ success: false, message: windowCheck.reason || 'Session is not active or has expired' });
       return;
     }
 
-    const effectiveExpiry = new Date(
-      session.expiryTime.getTime() + session.gracePeriodMinutes * 60 * 1000
-    );
-    if ((session.status !== 'active') && new Date() > effectiveExpiry) {
-      res.status(400).json({ success: false, message: 'Session is not active or has expired' });
-      return;
-    }
     if (!isValidSessionQrToken(session, secureToken, false)) {
       res.status(400).json({ success: false, message: 'QR code has expired — please scan the latest code' });
       return;
     }
 
+    const subject = session.subjectId as any;
+    if (req.user!.role === 'student') {
+      const student = await User.findById(req.user!.userId).select('department year section rollNumber');
+      if (!student) {
+        res.status(403).json({ success: false, message: 'Access denied' });
+        return;
+      }
+      const eligibility = checkStudentSessionEligibility(session, student, subject);
+      if (!eligibility.allowed) {
+        res.status(403).json({ success: false, message: eligibility.message });
+        return;
+      }
+    }
+
+    if (session.capacity && session.totalPresent >= session.capacity) {
+      res.status(400).json({ success: false, message: `Session is at full capacity (${session.capacity})` });
+      return;
+    }
+
     const alreadyMarked = await AttendanceRecord.findOne({ studentId: req.user!.userId, sessionId });
+    if (alreadyMarked) {
+      res.json({
+        success: true,
+        data: {
+          session: {
+            id: session._id,
+            subject: session.subjectId,
+            expiryTime: session.expiryTime,
+            startTime: session.startTime,
+            sessionType: session.sessionType,
+            venue: session.venue,
+            title: session.title,
+            geoFenceEnabled: !!session.geoFence?.latitude,
+            geoRadiusMeters: session.geoFence?.radiusMeters ?? null,
+          },
+          alreadyMarked: true,
+        },
+      });
+      return;
+    }
+
+    const deviceId = getNormalizedDeviceId(req);
+    const collusion = await detectSameDeviceCollusion(req, session._id.toString(), req.user!.userId, deviceId);
+    if (collusion.colluding) {
+      res.status(403).json({ success: false, message: collusion.message });
+      return;
+    }
+
+    const challenge = await issueAttendanceChallenge(req.user!.userId, session._id.toString(), deviceId);
 
     res.json({
       success: true,
@@ -766,7 +934,8 @@ export const validateQR = async (req: AuthRequest, res: Response): Promise<void>
           geoFenceEnabled: !!session.geoFence?.latitude,
           geoRadiusMeters: session.geoFence?.radiusMeters ?? null,
         },
-        alreadyMarked: !!alreadyMarked,
+        alreadyMarked: false,
+        ...challenge,
       },
     });
   } catch (error: any) {
@@ -817,7 +986,7 @@ export const raiseDispute = async (req: AuthRequest, res: Response): Promise<voi
   }
 };
 
-// ── STUDENT: GET ACTIVE SESSIONS ──────────────────────────────────────────────
+// ── STUDENT: GET ACTIVE SESSIONS (NO CODES / TOKENS EXPOSED) ─────────────────
 export const getActiveSessionsForStudent = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const student = await User.findById(req.user!.userId);
@@ -832,14 +1001,14 @@ export const getActiveSessionsForStudent = async (req: AuthRequest, res: Respons
 
     const subjectIds = subjects.map(s => s._id);
 
-    // Never expose qrToken or qrCodeData in active session list
+    // Never expose qrToken, qrCodeData, sessionCode, dynamicCode, or projectorSecret to students
     const sessions = await AttendanceSession.find({
       $or: [
         { subjectId: { $in: subjectIds }, status: 'active' },
         { verificationMode: 'open', status: 'active' },
       ],
     })
-      .select('-qrToken -qrCodeData')
+      .select('-qrToken -qrCodeData -sessionCode -dynamicCode -previousDynamicCode -previousQrToken -projectorSecret -issuedTokenHashes')
       .populate('subjectId', 'subjectName subjectCode department year section');
 
     res.json({ success: true, data: { sessions } });
@@ -860,10 +1029,11 @@ export const getAttendanceReceipt = async (req: AuthRequest, res: Response): Pro
     const record = await AttendanceRecord.findOne({
       studentId: req.user!.userId,
       sessionId,
+      ...VERIFIED_ATTENDANCE_FILTER,
     }).populate('subjectId', 'subjectName subjectCode department year section');
 
     if (!record) {
-      res.status(404).json({ success: false, message: 'No attendance record found for this session' });
+      res.status(404).json({ success: false, message: 'No verified attendance record found for this session' });
       return;
     }
 
@@ -904,60 +1074,123 @@ export const getAttendanceReceipt = async (req: AuthRequest, res: Response): Pro
   }
 };
 
-// ── OFFLINE ATTENDANCE SYNC ───────────────────────────────────────────────────
-export const syncOfflineAttendance = async (req: AuthRequest, res: Response): Promise<void> => {
+// ── OFFLINE ATTENDANCE SYNC: BEGIN CHALLENGE ──────────────────────────────────
+export const beginOfflineSyncChallenge = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { records } = req.body;
-    if (!Array.isArray(records) || records.length === 0 || records.length > 50) {
-      res.status(400).json({ success: false, message: 'records array (1-50 items) required' });
+    const { sessionId, qrToken } = req.body;
+    if (!isValidObjectId(sessionId) || !qrToken || typeof qrToken !== 'string') {
+      res.status(400).json({ success: false, message: 'Valid sessionId and scanned qrToken are required' });
       return;
     }
 
-    const student = await User.findById(req.user!.userId).select('department year section rollNumber');
+    const session = await AttendanceSession.findById(sessionId)
+      .populate('subjectId', 'subjectName subjectCode department year section');
+    if (!session) {
+      res.status(404).json({ success: false, message: 'Session not found' });
+      return;
+    }
+
+    const sessionAge = Date.now() - new Date(session.startTime).getTime();
+    if (sessionAge > 24 * 60 * 60 * 1000) {
+      res.status(400).json({ success: false, message: 'Session too old (>24h) to sync' });
+      return;
+    }
+
+    const tokenHash = hashSha256(qrToken);
+    const effectiveExpiryMs =
+      new Date(session.expiryTime).getTime() + (session.gracePeriodMinutes || 0) * 60_000;
+    const validIssued = (session.issuedTokenHashes || []).some(
+      (entry) =>
+        entry.hash === tokenHash &&
+        new Date(entry.issuedAt).getTime() >= new Date(session.startTime).getTime() - 60_000 &&
+        new Date(entry.issuedAt).getTime() <= effectiveExpiryMs
+    );
+    if (!validIssued) {
+      res.status(400).json({ success: false, message: 'QR token is not valid for this session window' });
+      return;
+    }
+
+    const student = await User.findById(req.user!.userId).select('department year section rollNumber faceDescriptor');
     if (!student) {
       res.status(404).json({ success: false, message: 'Student not found' });
       return;
     }
+    if (!student.faceDescriptor?.descriptor?.length) {
+      res.status(400).json({ success: false, message: 'Please enroll your face profile before syncing offline attendance.' });
+      return;
+    }
 
+    const eligibility = checkStudentSessionEligibility(session, student, session.subjectId as any);
+    if (!eligibility.allowed) {
+      res.status(403).json({ success: false, message: eligibility.message });
+      return;
+    }
+
+    const existing = await AttendanceRecord.findOne({ sessionId, studentId: req.user!.userId });
+    if (existing) {
+      res.status(409).json({ success: false, message: 'Attendance already recorded for this session' });
+      return;
+    }
+
+    const deviceId = getNormalizedDeviceId(req);
+    const collusion = await detectSameDeviceCollusion(req, sessionId, req.user!.userId, deviceId);
+    if (collusion.colluding) {
+      res.status(403).json({ success: false, message: collusion.message });
+      return;
+    }
+
+    const challenge = await issueAttendanceChallenge(req.user!.userId, sessionId, deviceId);
+    res.json({ success: true, data: challenge });
+  } catch {
+    res.status(500).json({ success: false, message: 'Failed to prepare offline sync verification' });
+  }
+};
+
+// ── OFFLINE ATTENDANCE SYNC (REQUIRES QR TOKEN + LIVE LIVENESS + FACE MATCH) ──
+export const syncOfflineAttendance = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { records } = req.body;
+    if (!Array.isArray(records) || records.length === 0 || records.length > 20) {
+      res.status(400).json({ success: false, message: 'records array (1-20 items) required' });
+      return;
+    }
+
+    const student = await User.findById(req.user!.userId);
+    if (!student) {
+      res.status(404).json({ success: false, message: 'Student not found' });
+      return;
+    }
+    if (!student.faceDescriptor?.descriptor?.length) {
+      res.status(400).json({ success: false, message: 'Enrolled face profile required to sync offline records' });
+      return;
+    }
+
+    const deviceId = getNormalizedDeviceId(req);
     const results: { sessionId: string; status: string; message: string }[] = [];
 
     for (const record of records) {
       const rawSessionId = String(record?.sessionId || '');
       try {
-        if (!isValidObjectId(rawSessionId)) {
-          results.push({ sessionId: rawSessionId, status: 'failed', message: 'Invalid session ID' });
+        if (!isValidObjectId(rawSessionId) || !record?.qrToken || typeof record.qrToken !== 'string') {
+          results.push({ sessionId: rawSessionId, status: 'failed', message: 'Valid scanned sessionId and qrToken required' });
+          continue;
+        }
+
+        const challengeCheck = await validateActiveChallenge(
+          record.challengeToken,
+          req.user!.userId,
+          rawSessionId,
+          deviceId
+        );
+        if (!challengeCheck.valid || !challengeCheck.challenge) {
+          results.push({ sessionId: rawSessionId, status: 'failed', message: challengeCheck.message || 'Verification challenge invalid' });
           continue;
         }
 
         const session = await AttendanceSession.findById(rawSessionId)
           .populate('subjectId', 'subjectName subjectCode department year section');
-
         if (!session) {
           results.push({ sessionId: rawSessionId, status: 'failed', message: 'Session not found' });
-          continue;
-        }
-
-        const subject = session.subjectId as any;
-        if (session.verificationMode === 'strict') {
-          if (
-            !subject ||
-            student.department !== subject.department ||
-            student.year !== subject.year ||
-            student.section !== subject.section
-          ) {
-            results.push({ sessionId: rawSessionId, status: 'failed', message: 'Not enrolled in this class section' });
-            continue;
-          }
-        } else if (session.verificationMode === 'invite') {
-          const roll = student.rollNumber?.toUpperCase() || '';
-          if (!session.inviteList.includes(roll)) {
-            results.push({ sessionId: rawSessionId, status: 'failed', message: 'Not on the invite list' });
-            continue;
-          }
-        }
-
-        if (session.capacity && session.totalPresent >= session.capacity) {
-          results.push({ sessionId: rawSessionId, status: 'failed', message: 'Session is at full capacity' });
           continue;
         }
 
@@ -967,26 +1200,94 @@ export const syncOfflineAttendance = async (req: AuthRequest, res: Response): Pr
           continue;
         }
 
+        const tokenHash = hashSha256(record.qrToken);
+        const effectiveExpiryMs =
+          new Date(session.expiryTime).getTime() + (session.gracePeriodMinutes || 0) * 60_000;
+        const validIssued = (session.issuedTokenHashes || []).some(
+          (entry) =>
+            entry.hash === tokenHash &&
+            new Date(entry.issuedAt).getTime() >= new Date(session.startTime).getTime() - 60_000 &&
+            new Date(entry.issuedAt).getTime() <= effectiveExpiryMs
+        );
+        if (!validIssued) {
+          results.push({ sessionId: rawSessionId, status: 'failed', message: 'Invalid or expired offline QR token' });
+          continue;
+        }
+
+        const geoCheck = checkGeoFence(session.geoFence, record.latitude, record.longitude);
+        if (!geoCheck.allowed) {
+          results.push({ sessionId: rawSessionId, status: 'failed', message: geoCheck.message || 'Outside classroom geofence' });
+          continue;
+        }
+
+        const subject = session.subjectId as any;
+        const eligibility = checkStudentSessionEligibility(session, student, subject);
+        if (!eligibility.allowed) {
+          results.push({ sessionId: rawSessionId, status: 'failed', message: eligibility.message || 'Not eligible' });
+          continue;
+        }
+
+        if (session.capacity && session.totalPresent >= session.capacity) {
+          results.push({ sessionId: rawSessionId, status: 'failed', message: 'Session is at full capacity' });
+          continue;
+        }
+
         const existing = await AttendanceRecord.findOne({ sessionId: rawSessionId, studentId: req.user!.userId });
         if (existing) {
           results.push({ sessionId: rawSessionId, status: 'duplicate', message: 'Already marked' });
           continue;
         }
 
+        const collusion = await detectSameDeviceCollusion(req, rawSessionId, req.user!.userId, deviceId);
+        if (collusion.colluding) {
+          results.push({ sessionId: rawSessionId, status: 'failed', message: collusion.message || 'Same-device collusion detected' });
+          continue;
+        }
+
+        const livenessResult = verifyLivenessProof(challengeCheck.challenge.livenessActions, record.livenessProof);
+        if (!livenessResult.valid || !livenessResult.primaryDescriptor) {
+          await incrementChallengeFailure(challengeCheck.challenge._id.toString());
+          results.push({ sessionId: rawSessionId, status: 'failed', message: livenessResult.reason || 'Liveness verification failed' });
+          continue;
+        }
+
+        const match = evaluateFaceMatch(
+          livenessResult.primaryDescriptor,
+          student.faceDescriptor.descriptor,
+          student.faceDescriptor.recentVerificationHashes || []
+        );
+        if (match.isReplay || !match.matched) {
+          await incrementChallengeFailure(challengeCheck.challenge._id.toString());
+          results.push({ sessionId: rawSessionId, status: 'failed', message: 'Face verification failed' });
+          continue;
+        }
+
+        const consumed = await consumeChallengeAtomically(challengeCheck.challenge._id.toString());
+        if (!consumed) {
+          results.push({ sessionId: rawSessionId, status: 'failed', message: 'Challenge already consumed' });
+          continue;
+        }
+
+        const prevHashes = student.faceDescriptor.recentVerificationHashes || [];
+        student.faceDescriptor.recentVerificationHashes = [...prevHashes.slice(-9), match.liveHash];
+        await student.save();
+
         await AttendanceRecord.create({
           studentId: req.user!.userId,
           sessionId: session._id,
           subjectId: subject?._id ?? session.subjectId,
           timestamp: record.timestamp ? new Date(record.timestamp) : new Date(),
-          verificationStatus: 'pending', // Offline sync records require teacher/admin verification if disputed or unverified by biometric
+          verificationStatus: 'pending', // Pending teacher/admin approval before counting toward totalPresent
           verificationMethod: 'offline_sync',
           isLate: false,
           ipAddress: getClientIp(req),
+          deviceId: deviceId || undefined,
+          livenessPassed: true,
+          livenessActions: challengeCheck.challenge.livenessActions,
+          faceConfidence: Number(match.similarity.toFixed(3)),
         });
 
-        await AttendanceSession.findByIdAndUpdate(rawSessionId, { $inc: { totalPresent: 1 } });
-
-        results.push({ sessionId: rawSessionId, status: 'synced', message: 'Attendance synced successfully' });
+        results.push({ sessionId: rawSessionId, status: 'synced', message: 'Synced and queued for approval' });
       } catch {
         results.push({ sessionId: rawSessionId, status: 'failed', message: 'Sync error' });
       }
@@ -997,7 +1298,7 @@ export const syncOfflineAttendance = async (req: AuthRequest, res: Response): Pr
 
     res.json({
       success: true,
-      message: `${synced} synced, ${failed} failed`,
+      message: `${synced} synced (pending approval), ${failed} failed`,
       data: { results, synced, failed },
     });
   } catch {

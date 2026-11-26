@@ -13,7 +13,7 @@ export const getAdminAnalytics = async (req: AuthRequest, res: Response): Promis
 
     // Daily attendance for last 30 days
     const dailyAttendance = await AttendanceRecord.aggregate([
-      { $match: { createdAt: { $gte: thirtyDaysAgo } } },
+      { $match: { createdAt: { $gte: thirtyDaysAgo }, verificationStatus: 'verified' } },
       {
         $group: {
           _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
@@ -25,6 +25,7 @@ export const getAdminAnalytics = async (req: AuthRequest, res: Response): Promis
 
     // Subject-wise attendance
     const subjectAttendance = await AttendanceRecord.aggregate([
+      { $match: { verificationStatus: 'verified' } },
       {
         $group: {
           _id: '$subjectId',
@@ -53,6 +54,7 @@ export const getAdminAnalytics = async (req: AuthRequest, res: Response): Promis
 
     // Monthly attendance
     const monthlyAttendance = await AttendanceRecord.aggregate([
+      { $match: { verificationStatus: 'verified' } },
       {
         $group: {
           _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } },
@@ -103,8 +105,10 @@ export const getTeacherAnalytics = async (req: AuthRequest, res: Response): Prom
       {
         $lookup: {
           from: 'attendancerecords',
-          localField: '_id',
-          foreignField: 'sessionId',
+          let: { sessId: '$_id' },
+          pipeline: [
+            { $match: { $expr: { $and: [{ $eq: ['$sessionId', '$$sessId'] }, { $eq: ['$verificationStatus', 'verified'] }] } } },
+          ],
           as: 'records',
         },
       },
@@ -120,7 +124,7 @@ export const getTeacherAnalytics = async (req: AuthRequest, res: Response): Prom
 
     // Per-subject stats
     const subjectStats = await AttendanceRecord.aggregate([
-      { $match: { subjectId: { $in: subjectIds } } },
+      { $match: { subjectId: { $in: subjectIds }, verificationStatus: 'verified' } },
       { $group: { _id: '$subjectId', totalPresent: { $sum: 1 } } },
       {
         $lookup: { from: 'subjects', localField: '_id', foreignField: '_id', as: 'subject' },
@@ -158,7 +162,7 @@ export const getStudentAnalytics = async (req: AuthRequest, res: Response): Prom
 
     // Monthly attendance trend
     const monthlyTrend = await AttendanceRecord.aggregate([
-      { $match: { studentId: studentObjectId } },
+      { $match: { studentId: studentObjectId, verificationStatus: 'verified' } },
       {
         $group: {
           _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } },
@@ -170,7 +174,7 @@ export const getStudentAnalytics = async (req: AuthRequest, res: Response): Prom
 
     // Per-subject attendance
     const subjectBreakdown = await AttendanceRecord.aggregate([
-      { $match: { studentId: studentObjectId } },
+      { $match: { studentId: studentObjectId, verificationStatus: 'verified' } },
       { $group: { _id: '$subjectId', present: { $sum: 1 } } },
       { $lookup: { from: 'subjects', localField: '_id', foreignField: '_id', as: 'subject' } },
       { $unwind: '$subject' },
@@ -184,7 +188,7 @@ export const getStudentAnalytics = async (req: AuthRequest, res: Response): Prom
       },
     ]);
 
-    const totalRecords = await AttendanceRecord.countDocuments({ studentId });
+    const totalRecords = await AttendanceRecord.countDocuments({ studentId, verificationStatus: 'verified' });
     const recentActivity = await AttendanceRecord.find({ studentId })
       .populate('subjectId', 'subjectName subjectCode')
       .sort({ timestamp: -1 })

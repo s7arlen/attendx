@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { useAuthStore } from '@/store/authStore';
+import { getClientDeviceId } from '@/lib/device';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -9,13 +10,14 @@ const api = axios.create({
   withCredentials: true,
 });
 
-// Request interceptor – attach access token
+// Request interceptor – attach access token and persistent device ID
 api.interceptors.request.use(
   (config) => {
     const token = useAuthStore.getState().accessToken;
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    config.headers['X-Device-Id'] = getClientDeviceId();
     return config;
   },
   (error) => Promise.reject(error)

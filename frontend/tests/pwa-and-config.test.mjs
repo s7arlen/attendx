@@ -59,3 +59,18 @@ test('QR refresh defaults to 15s and Admin Settings page is registered', () => {
   const sidebarSrc = fs.readFileSync(path.resolve('src/components/layout/Sidebar.tsx'), 'utf8');
   assert.match(sidebarSrc, /path:\s*'\/len-admin\/settings'/);
 });
+
+test('anti-proxy security hardening invariants across student and projector views', () => {
+  const scanQrSrc = fs.readFileSync(path.resolve('src/pages/student/ScanQRPage.tsx'), 'utf8');
+  assert.match(scanQrSrc, /challengeToken/);
+  assert.match(scanQrSrc, /livenessActions/);
+  assert.doesNotMatch(scanQrSrc, /face-register/);
+  assert.doesNotMatch(scanQrSrc, /registerThenVerify/);
+
+  const dashSrc = fs.readFileSync(path.resolve('src/pages/student/StudentDashboard.tsx'), 'utf8');
+  assert.doesNotMatch(dashSrc, /Session Code:/);
+
+  const projectorSrc = fs.readFileSync(path.resolve('src/pages/ProjectorPage.tsx'), 'utf8');
+  assert.match(projectorSrc, /projectorKey/);
+  assert.match(projectorSrc, /dynamicCode/);
+});

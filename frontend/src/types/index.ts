@@ -14,7 +14,9 @@ export interface User {
   isActive?: boolean;
   isEmailVerified?: boolean;
   hasWebAuthn?: boolean;  // true when at least one biometric credential is registered
+  webauthnLocked?: boolean;
   hasFaceDescriptor?: boolean;
+  faceLocked?: boolean;
   createdAt?: string;
 }
 
@@ -60,6 +62,8 @@ export interface AttendanceSession {
   subjectId: Subject | string;
   teacherId: User | string;
   sessionCode: string;
+  dynamicCode?: string;
+  projectorSecret?: string;
   qrToken: string;
   qrCodeData: string;
   startTime: string;
@@ -80,7 +84,24 @@ export interface AttendanceSession {
 }
 
 export type VerificationStatus = 'verified' | 'pending' | 'rejected';
-export type VerificationMethod = 'qr' | 'password' | 'biometric' | 'offline_sync' | 'manual';
+export type VerificationMethod = 'qr' | 'password' | 'biometric' | 'offline_sync' | 'manual' | 'facial_recognition';
+
+export type LivenessAction = 'blink' | 'turn_left' | 'turn_right' | 'open_mouth';
+
+export interface LivenessFrameTelemetry {
+  phase: 'baseline' | LivenessAction;
+  ear: number;
+  mar: number;
+  yawRatio: number;
+  timestampMs: number;
+  descriptor: number[];
+  snapshotBase64: string;
+}
+
+export interface LivenessProof {
+  frames: LivenessFrameTelemetry[];
+  totalDurationMs: number;
+}
 
 export interface AttendanceRecord {
   _id: string;

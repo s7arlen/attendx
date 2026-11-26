@@ -84,7 +84,8 @@ export default function SecurityGatePage() {
   }, [])
 
   const scanMutation = useMutation({
-    mutationFn: (passCode: string) => visitorService.scanQR({ passCode: passCode.trim().toUpperCase(), action }),
+    mutationFn: (payload: { passCode: string; token?: string; scanMethod: 'qr' | 'manual' }) =>
+      visitorService.scanQR({ passCode: payload.passCode.trim().toUpperCase(), token: payload.token, scanMethod: payload.scanMethod, action }),
     onSuccess: (data) => {
       setScanResult('success')
       setScanData({ visitor: data.data?.visitor, visit: data.data?.visit, action: data.data?.action, timestamp: data.data?.timestamp })
@@ -105,7 +106,7 @@ export default function SecurityGatePage() {
       if (!payload.passCode) throw new Error('bad')
       setMode('choose')
       setScanResult('loading')
-      scanMutation.mutate(payload.passCode)
+      scanMutation.mutate({ passCode: payload.passCode, token: payload.token, scanMethod: 'qr' })
     } catch {
       toast({ title: 'Invalid QR', description: 'Not a valid visitor pass QR.', variant: 'destructive' })
       setMode('choose')
@@ -261,7 +262,7 @@ export default function SecurityGatePage() {
                   placeholder="VIS-XXXXXX"
                   className="text-center text-lg font-mono tracking-widest uppercase h-12"
                   autoFocus
-                  onKeyDown={(e) => e.key === 'Enter' && manualCode && scanMutation.mutate(manualCode)}
+                  onKeyDown={(e) => e.key === 'Enter' && manualCode && scanMutation.mutate({ passCode: manualCode, scanMethod: 'manual' })}
                 />
                 <div className="flex gap-2">
                   <Button variant="outline" className="flex-1" onClick={() => setMode('choose')}>Back</Button>
@@ -269,7 +270,7 @@ export default function SecurityGatePage() {
                     variant="gradient" className="flex-1"
                     disabled={!manualCode.trim()}
                     loading={scanMutation.isPending}
-                    onClick={() => scanMutation.mutate(manualCode)}
+                    onClick={() => scanMutation.mutate({ passCode: manualCode, scanMethod: 'manual' })}
                   >
                     {action === 'entry' ? <LogIn className="w-4 h-4" /> : <LogOut className="w-4 h-4" />}
                     Record {action}

@@ -41,6 +41,8 @@ export const adminService = {
   deleteStudent: async (id: string) => { const res = await api.delete(`/admin/students/${id}`); return res.data; },
   activateStudent: async (id: string) => { const res = await api.patch(`/admin/students/${id}/activate`); return res.data; },
   hardDeleteStudent: async (id: string) => { const res = await api.delete(`/admin/students/${id}/permanent`); return res.data; },
+  resetStudentFace: async (id: string) => { const res = await api.post(`/admin/students/${id}/reset-face`); return res.data; },
+  resetStudentBiometrics: async (id: string) => { const res = await api.post(`/admin/students/${id}/reset-biometrics`); return res.data; },
 
   // Subjects
   getSubjects: async () => {

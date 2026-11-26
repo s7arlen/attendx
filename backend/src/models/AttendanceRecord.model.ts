@@ -14,6 +14,10 @@ export interface IAttendanceRecord extends Document {
   isLate: boolean;
   ipAddress?: string;
   deviceInfo?: string;
+  deviceId?: string;
+  livenessPassed?: boolean;
+  livenessActions?: string[];
+  faceConfidence?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -37,11 +41,16 @@ const AttendanceRecordSchema = new Schema<IAttendanceRecord>(
     isLate: { type: Boolean, default: false },
     ipAddress: { type: String },
     deviceInfo: { type: String },
+    deviceId: { type: String },
+    livenessPassed: { type: Boolean, default: false },
+    livenessActions: [{ type: String }],
+    faceConfidence: { type: Number },
   },
   { timestamps: true }
 );
 
 // Prevent duplicate attendance per session
 AttendanceRecordSchema.index({ studentId: 1, sessionId: 1 }, { unique: true });
+AttendanceRecordSchema.index({ sessionId: 1, deviceId: 1 });
 
 export const AttendanceRecord = mongoose.model<IAttendanceRecord>('AttendanceRecord', AttendanceRecordSchema);

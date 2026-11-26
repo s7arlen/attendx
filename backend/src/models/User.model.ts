@@ -15,6 +15,8 @@ export interface IWebAuthnCredential {
 export interface IFaceDescriptor {
   descriptor: number[];       // 128-element face embedding
   capturedAt: Date;
+  locked?: boolean;
+  recentVerificationHashes?: string[];
 }
 
 export interface IUser extends Document {
@@ -39,6 +41,7 @@ export interface IUser extends Document {
   passwordResetExpires?: Date;
   passwordResetAttempts?: number;
   webauthnChallenge?: string;  // temp challenge during registration/auth
+  webauthnLocked?: boolean;
   webauthnCredentials: IWebAuthnCredential[];
   faceDescriptor?: IFaceDescriptor;  // For facial recognition
   createdAt: Date;
@@ -68,6 +71,7 @@ const UserSchema = new Schema<IUser>(
     passwordResetExpires: { type: Date },
     passwordResetAttempts: { type: Number, default: 0 },
     webauthnChallenge: { type: String },
+    webauthnLocked: { type: Boolean, default: false },
     webauthnCredentials: {
       type: [{
         credentialId: { type: String, required: true },
@@ -82,6 +86,8 @@ const UserSchema = new Schema<IUser>(
     faceDescriptor: {
       descriptor: [{ type: Number }],  // 128-element embedding array
       capturedAt: { type: Date },
+      locked: { type: Boolean, default: false },
+      recentVerificationHashes: [{ type: String }],
     },
   },
   { timestamps: true }
@@ -114,9 +120,11 @@ UserSchema.methods.toJSON = function () {
   delete obj.emailVerifyAttempts;
   delete obj.webauthnChallenge;
   obj.isEmailVerified = !!obj.isEmailVerified;
-  // Replace webauthnCredentials with a simple boolean flag
+  // Replace webauthnCredentials with simple boolean flags
   obj.hasWebAuthn = Array.isArray(obj.webauthnCredentials) && obj.webauthnCredentials.length > 0;
+  obj.webauthnLocked = !!obj.webauthnLocked;
   obj.hasFaceDescriptor = !!obj.faceDescriptor?.descriptor?.length;
+  obj.faceLocked = !!obj.faceDescriptor?.locked;
   delete obj.webauthnCredentials;
   delete obj.faceDescriptor;
   return obj;

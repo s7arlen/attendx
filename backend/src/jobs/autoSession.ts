@@ -13,6 +13,7 @@ import { User } from '../models/User.model';
 import { getSystemSettings } from '../models/SystemSettings.model';
 import { generateSessionAssets } from '../utils/qrGenerator';
 import { createNotification } from '../utils/notificationHelper';
+import { hashSha256 } from '../utils/security';
 
 const DAY_MAP: Record<number, string> = {
   0: 'Sunday',
@@ -33,12 +34,16 @@ function parseTime(t: string): { hours: number; minutes: number } {
 }
 
 /**
- * Get current IST time (UTC + 5:30)
+ * Get current IST wall-clock parts accurately regardless of host server timezone
  */
-function getISTNow(): Date {
-  const now = new Date();
-  const utc = now.getTime() + now.getTimezoneOffset() * 60000;
-  return new Date(utc + 5.5 * 3600000);
+function getISTWallClock(now = new Date()): { dayName: string; hours: number; minutes: number } {
+  const istMs = now.getTime() + 5.5 * 3600 * 1000;
+  const istDate = new Date(istMs);
+  return {
+    dayName: DAY_MAP[istDate.getUTCDay()],
+    hours: istDate.getUTCHours(),
+    minutes: istDate.getUTCMinutes(),
+  };
 }
 
 /**
@@ -46,13 +51,10 @@ function getISTNow(): Date {
  */
 async function autoStartSessions() {
   try {
-    const ist = getISTNow();
-    const todayName = DAY_MAP[ist.getDay()];
+    const now = new Date();
+    const { dayName: todayName, hours: currentHour, minutes: currentMinute } = getISTWallClock(now);
 
     if (todayName === 'Sunday') return;
-
-    const currentHour   = ist.getHours();
-    const currentMinute = ist.getMinutes();
 
     // Get today's timetable entries
     const entries = await Timetable.find({ day: todayName, isActive: true })
@@ -65,9 +67,8 @@ async function autoStartSessions() {
       const { hours: startH, minutes: startM } = parseTime(entry.startTime);
 
       // Target window: 2 minutes before class start
-      const targetH = startH;
       const targetM = startM - 2;
-      const adjustedH = targetM < 0 ? startH - 1 : startH;
+      const adjustedH = targetM < 0 ? (startH + 23) % 24 : startH;
       const adjustedM = targetM < 0 ? 60 + targetM : targetM;
 
       if (currentHour !== adjustedH || currentMinute !== adjustedM) continue;
@@ -85,24 +86,28 @@ async function autoStartSessions() {
 
       // Calculate duration from timetable
       const { hours: endH, minutes: endM } = parseTime(entry.endTime);
-      const durationMin = (endH * 60 + endM) - (startH * 60 + startM);
+      const durationMin = Math.max(5, (endH * 60 + endM) - (startH * 60 + startM));
 
       // Generate QR assets
       const newId = new mongoose.Types.ObjectId();
       const sessionIdStr = newId.toString();
-      const { secureToken, sessionCode, qrCodeData } =
+      const { secureToken, sessionCode, dynamicCode, projectorSecret, qrCodeData } =
         await generateSessionAssets(sessionIdStr, subject._id.toString(), subject.subjectCode);
 
-      const startTime  = new Date(ist);
-      const expiryTime = new Date(ist.getTime() + durationMin * 60 * 1000);
+      // Store real UTC timestamps so expiry comparisons match `new Date()` everywhere
+      const startTime  = new Date(now);
+      const expiryTime = new Date(now.getTime() + durationMin * 60 * 1000);
 
       await AttendanceSession.create({
         _id:          newId,
         subjectId:    subject._id,
         teacherId:    entry.teacherId,
         sessionCode,
+        dynamicCode,
+        projectorSecret,
         qrToken:      secureToken,
         qrCodeData,
+        issuedTokenHashes: [{ hash: hashSha256(secureToken), issuedAt: startTime }],
         startTime,
         expiryTime,
         status:       'active',
@@ -114,11 +119,11 @@ async function autoStartSessions() {
 
       console.log(`[auto-session] ✅ Started: ${subject.subjectCode} for ${teacher.name} (${entry.startTime}–${entry.endTime}, Room: ${entry.room || 'N/A'})`);
 
-      // Notify teacher
+      // Notify teacher only (never send code to students)
       await createNotification(
         entry.teacherId.toString(),
         '📋 Attendance Session Started',
-        `Your ${subject.subjectName} class starts in 2 minutes. Attendance session is live. Session code: ${sessionCode}`,
+        `Your ${subject.subjectName} class starts in 2 minutes. Attendance session is live. Open Sessions to view QR and live classroom code.`,
         'info',
         '/teacher/sessions'
       );
@@ -133,12 +138,8 @@ async function autoStartSessions() {
  */
 async function autoEndSessions() {
   try {
-    const ist = getISTNow();
-    const todayName = DAY_MAP[ist.getDay()];
+    const { dayName: todayName, hours: currentHour, minutes: currentMinute } = getISTWallClock(new Date());
     if (todayName === 'Sunday') return;
-
-    const currentHour   = ist.getHours();
-    const currentMinute = ist.getMinutes();
 
     const entries = await Timetable.find({ day: todayName, isActive: true })
       .populate('subjectId');
@@ -180,17 +181,26 @@ async function autoEndSessions() {
 }
 
 /**
- * Also expire sessions that passed their expiryTime
+ * Expire sessions that passed their effective expiry (expiryTime + gracePeriodMinutes)
  */
 async function expireOverdueSessions() {
   try {
     const now = new Date();
-    const result = await AttendanceSession.updateMany(
-      { status: 'active', expiryTime: { $lt: now } },
-      { $set: { status: 'expired' } }
+    const activeSessions = await AttendanceSession.find({ status: 'active' }).select(
+      '_id expiryTime gracePeriodMinutes'
     );
-    if (result.modifiedCount > 0) {
-      console.log(`[auto-session] Expired ${result.modifiedCount} overdue session(s)`);
+    const overdueIds = activeSessions
+      .filter((s) => now.getTime() > new Date(s.expiryTime).getTime() + (s.gracePeriodMinutes || 0) * 60_000)
+      .map((s) => s._id);
+
+    if (overdueIds.length > 0) {
+      const result = await AttendanceSession.updateMany(
+        { _id: { $in: overdueIds }, status: 'active' },
+        { $set: { status: 'expired' } }
+      );
+      if (result.modifiedCount > 0) {
+        console.log(`[auto-session] Expired ${result.modifiedCount} overdue session(s)`);
+      }
     }
   } catch (err) {
     console.error('[auto-session] Expire error:', err);

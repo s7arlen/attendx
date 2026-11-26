@@ -12,7 +12,7 @@ import { createAuditLog, getClientIp } from '../utils/auditLogger';
 import { emitToUser } from '../config/socket';
 import { generateVisitorToken, hashToken, generatePassCode, generateVisitorQRCode } from '../utils/visitorQR';
 import { sendVisitorRequestEmail, sendVisitorApprovedEmail, sendVisitorRejectedEmail } from '../utils/mailer';
-import { clampPagination, escapeRegex, isValidObjectId } from '../utils/security';
+import { clampPagination, escapeRegex, isValidObjectId, safeEqualHex } from '../utils/security';
 import { Server } from 'socket.io';
 
 const populateVisit = (q: any) =>
@@ -274,7 +274,7 @@ export const approveVisit = async (req: AuthRequest, res: Response): Promise<voi
     while (await VisitorPass.findOne({ passCode })) {
       passCode = generatePassCode();
     }
-    const qrCodeData = await generateVisitorQRCode(passCode);
+    const qrCodeData = await generateVisitorQRCode(passCode, rawToken);
 
     const visitDate = new Date(visit.visitDate);
     const visitDateEnd = new Date(visitDate); visitDateEnd.setDate(visitDateEnd.getDate() + 1);
@@ -436,10 +436,17 @@ export const getAllPasses = async (req: AuthRequest, res: Response): Promise<voi
 // ─────────────────────────────────────────────────────────────
 export const scanVisitorQR = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { passCode, action } = req.body;
+    const { passCode, token, scanMethod } = req.body;
+    const action = req.body.action;
 
     if (!passCode || typeof passCode !== 'string' || !['entry', 'exit'].includes(action)) {
       res.status(400).json({ success: false, message: 'passCode and action (entry|exit) are required' });
+      return;
+    }
+
+    const method = scanMethod === 'manual' ? 'manual' : 'qr';
+    if (method === 'qr' && token && typeof token !== 'string') {
+      res.status(400).json({ success: false, message: 'Invalid pass token' });
       return;
     }
 
@@ -460,12 +467,31 @@ export const scanVisitorQR = async (req: AuthRequest, res: Response): Promise<vo
         action: 'denied',
         timestamp: new Date(),
         gateOperatorId: req.user!.userId,
-        scanMethod: 'qr',
+        scanMethod: method,
         ipAddress: getClientIp(req),
         denied_reason: 'Pass not found',
       }).catch(() => {});
       res.status(404).json({ success: false, message: 'QR pass not found', scanResult: 'invalid' });
       return;
+    }
+
+    if (token) {
+      const incomingHash = hashToken(token);
+      if (!safeEqualHex(pass.tokenHash, incomingHash)) {
+        await VisitorLog.create({
+          visitId: (pass.visitId as any)?._id ?? pass.visitId,
+          visitorId: (pass.visitorId as any)?._id ?? pass.visitorId,
+          passId: pass._id,
+          action: 'denied',
+          timestamp: new Date(),
+          gateOperatorId: req.user!.userId,
+          scanMethod: method,
+          ipAddress: getClientIp(req),
+          denied_reason: 'Invalid cryptographic QR token',
+        }).catch(() => {});
+        res.status(403).json({ success: false, message: 'Forged or invalid QR pass token', scanResult: 'invalid' });
+        return;
+      }
     }
 
     const visitor = pass.visitorId as any;
